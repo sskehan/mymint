@@ -1,7 +1,7 @@
 /* MyMint — core: on-phone storage, money, Dropbox live copy, snapshots, backup & restore.
    The storage and Dropbox parts follow the same design as MyMaglites. */
 "use strict";
-const APP_ID="mymint", APP_NAME="MyMint", APP_VERSION="1.01", BACKUP_VERSION=1;
+const APP_ID="mymint", APP_NAME="MyMint", APP_VERSION="1.02", BACKUP_VERSION=1;
 
 /* ================= storage (IndexedDB, on this device) ================= */
 const STORES=["coins","wanted","settings","files","meta","outbox"];
@@ -93,8 +93,11 @@ let _restore=null;
 async function readRestore(file){
   const st=$("#rsStat")||{}; st.textContent="Reading…";
   try{
-    const zip=await JSZip.loadAsync(file); const j=zip.file("backup.json"); if(!j) throw new Error("This isn't a MyMint backup (no backup.json inside).");
-    const data=JSON.parse(await j.async("string")); if(data.app!==APP_ID) throw new Error("This file is from a different app.");
+    let zip=null, data;
+    const head=new Uint8Array(await file.slice(0,4).arrayBuffer());
+    if(head[0]===0x50&&head[1]===0x4b){ zip=await JSZip.loadAsync(file); const j=zip.file("backup.json"); if(!j) throw new Error("This isn't a MyMint backup (no backup.json inside)."); data=JSON.parse(await j.async("string")); }
+    else { const txt=(await file.text()).replace(/^\ufeff/,"").trim(); if(!txt.startsWith("{")) throw new Error(file.size?"That file isn't a MyMint backup (it may not have downloaded fully — try saving it again).":"That file is empty — it didn't download fully. Save it again and retry."); data=JSON.parse(txt); }
+    if(data.app!==APP_ID) throw new Error("This file is from a different app.");
     _restore={zip,data};
     const html=`<div class="banner" style="margin-top:8px"><span>Backup from ${fmtWhen(data.exportedAt)}: ${data.coins.length} coins, ${(data.files||[]).length} photos, ${(data.wanted||[]).length} wanted. This replaces what's on this ${devWord()}${S.coins.length?` (${S.coins.length} coins)`:""}.</span><button type="button" class="btn primary sm" data-rsyes>Restore</button><button type="button" class="btn ghost sm" data-rsno>Cancel</button></div>`;
     if($("#rsConfirm")){ $("#rsConfirm").innerHTML=html; st.textContent=""; }
@@ -108,7 +111,7 @@ async function doRestore(){
   st.textContent="Restoring…"; _bulk++; try{
   for(const s of ["coins","wanted","settings","files"]) await dbClear(s);
   for(const u of Object.values(S.urls)) URL.revokeObjectURL(u); S.urls={};
-  let n=0; for(const f of (data.files||[])){ const z=zip.file(f.path); if(!z) continue; const b=await z.async("blob"); await dbPut("files",{id:f.id,type:f.type,name:f.name,blob:new Blob([b],{type:f.type})}); if(++n%10===0) st.textContent=`Restoring photos ${n} of ${data.files.length}…`; }
+  let n=0; for(const f of (zip?data.files||[]:[])){ const z=zip.file(f.path); if(!z) continue; const b=await z.async("blob"); await dbPut("files",{id:f.id,type:f.type,name:f.name,blob:new Blob([b],{type:f.type})}); if(++n%10===0) st.textContent=`Restoring photos ${n} of ${data.files.length}…`; }
   for(const c of data.coins) await dbPut("coins",c); for(const w of (data.wanted||[])) await dbPut("wanted",w); for(const x of (data.settings||[])) await dbPut("settings",x);
   S.meta.lastBackup=data.exportedAt; S.meta.changes=0; S.meta.needFull=true; S.meta.snapDirty=true; await tx("outbox","readwrite",os=>os.clear()); await saveMeta();
   _restore=null; await reload(); }finally{ _bulk--; } askPersist(); S.tab="coins"; render(); toast(`Restored ${data.coins.length} coins`); if(dbxOn()) syncNow();

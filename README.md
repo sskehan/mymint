@@ -1,4 +1,4 @@
-# MyMint — coin collection app (version 1.01)
+# MyMint — coin collection app (version 1.02)
 
 Runs on your phone with no Claude and no account. Your coins and photos are stored on the
 phone itself, with a live copy in your own Dropbox once connected. Same setup as MyMaglites.
@@ -20,7 +20,7 @@ Open the address in Chrome → **⋮ → Add to Home screen / Install app**.
 (If Chrome won't install it, Samsung Internet works, as with Our Tax.)
 
 ## 3. Load your starter list
-Save `mymint-starter-backup.zip` to the phone, then in the app:
+Save `mymint-starter-backup.json` (or the .zip) to the phone, then in the app:
 **More → Backup & restore → Choose backup file… → Restore**. Your 13 coins load.
 Then tap the **To finish** chip to work through the details each one still needs.
 
