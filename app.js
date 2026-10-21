@@ -53,7 +53,7 @@ function gradePill(c){ const g=gradeText(c); if(g) return `<span class="grade" s
 const mine=c=>(c.photos||[]).filter(p=>p.mine);
 function coverOf(c){ const ph=c.photos||[]; return ph.find(p=>p.id===c.coverId)||ph.find(p=>p.mine&&p.side==="Obverse")||ph.find(p=>p.mine)||ph.find(p=>p.side==="Obverse")||ph[0]||null; }
 function todoOf(c){ const t=[]; if(blank(c.year)) t.push("year"); if(!c.grade&&c.finish!=="Proof") t.push("grade"); if(!mine(c).length) t.push("your photos"); if(blank(c.storage)) t.push("storage location"); if(c.acqHow==="Bought"&&blank(c.price)) t.push("price paid"); return t; }
-function imgTag(p,attrs){ return p.url?`<img src="${esc(p.url)}" alt="" referrerpolicy="no-referrer" ${attrs||""}>`:`<img data-fid="${esc(p.id)}" alt="" ${attrs||""}>`; }
+function imgTag(p,attrs){ return p.url?`<img src="${esc(p.url)}" alt="" referrerpolicy="no-referrer" onerror="this.style.opacity=0" ${attrs||""}>`:`<img data-fid="${esc(p.id)}" alt="" ${attrs||""}>`; }
 function drawnCoin(c){ const d=dInfo(c.denom); return `<div class="coin m-${d.metal} ${d.shape||""}">${esc(c.denom?d.face:"?")}</div>`; }
 function faceHTML(c){ const p=coverOf(c); return `<div class="face">${p?imgTag(p):drawnCoin(c)}</div>`; }
 const fmtNum=n=>blank(n)?"":isNaN(+n)?String(n):Number(n).toLocaleString("en-AU");
@@ -72,7 +72,8 @@ function matchQuery(c,q){
   const h=hay(c);
   for(const t of norm(rest).split(" ").filter(Boolean)){
     if(/^\d{4}$/.test(t)){ if(String(yearNum(c))===t) continue; if(h.includes(" "+t)) continue; return false; }
-    if(!h.includes(t)) return false;
+    if(/^\d+$/.test(t)){ if(!h.includes(" "+t+" ")) return false; continue; }
+    if(!h.includes(" "+t)) return false;
   }
   return true;
 }
@@ -303,6 +304,7 @@ async function fillStoreInfo(){ const el=$("#storeInfo"); if(!el) return; let us
 
 /* ================= Numista ================= */
 const NS_API="https://api.numista.com/v3";
+const asList=x=>Array.isArray(x)?x:(x&&(x.issues||x.items||x.types))||[];
 const nsSet=()=>S.settings.find(x=>x.id==="numista")||{id:"numista"};
 const nsKey=()=>nsSet().key||"";
 function nsUsage(){ const u=S.meta.nsCalls||{}; const m=todayISO().slice(0,7); return `${u.month===m?u.n:0} of 2,000 lookups used this month`; }
@@ -314,7 +316,7 @@ async function nsFetch(path){
   if(r.status===401) throw new Error("Numista didn't accept the API key — check it in More › Numista lookups.");
   if(r.status===429) throw new Error("Numista's monthly lookup limit has been reached.");
   if(r.status===404) throw new Error("Numista doesn't have that entry.");
-  if(!r.ok) throw new Error("Numista error "+r.status);
+  if(!r.ok){ let m=""; try{ const j=await r.json(); m=j.error_message||j.message||j.error||""; }catch{} const e=new Error("Numista error "+r.status+(m?": "+String(m).slice(0,140):"")); e.status=r.status; throw e; }
   return r.json();
 }
 const stripHtml=h=>{ if(!h) return ""; const d=document.createElement("div"); d.innerHTML=String(h).replace(/<br\s*\/?>/gi,"\n").replace(/<\/p>/gi,"\n\n"); return d.textContent.replace(/\n{3,}/g,"\n\n").trim(); };
@@ -348,7 +350,7 @@ function applyNs(draft,o,overwriteAll){ draft.nsFilled=draft.nsFilled||{}; for(c
 async function nsRefresh(id){
   const c=clone(S.coins.find(x=>x.id===id)); if(!c||!c.ns) return;
   toast("Checking Numista…");
-  try{ const t=await nsFetch(`/types/${c.ns.id}`); let issues=[]; try{ issues=await nsFetch(`/types/${c.ns.id}/issues`); }catch{}
+  try{ const t=await nsFetch(`/types/${c.ns.id}`); let issues=[]; try{ issues=asList(await nsFetch(`/types/${c.ns.id}/issues`)); }catch{}
     const issue=(issues||[]).find(i=>String(i.year)===String(yearNum(c))&&(i.mint_letter||"")===((c.mint&&c.mint!=="None")?c.mint:""))||null;
     const before=JSON.stringify(c); applyNs(c,fromNumista(t,issue),false); c.ns=nsInfo(t,issues);
     c.updatedAt=new Date().toISOString(); await dbPut("coins",c); await reload(); drawTop();
@@ -370,7 +372,7 @@ function drawTop(fresh){
   const sh=$("#sheet"), d=S.stack[S.stack.length-1];
   if(!d){ sh.hidden=true; sh.innerHTML=""; document.body.style.overflow=""; render(); return; }
   const keep=fresh?0:(d.scroll!=null?d.scroll:sh.scrollTop);
-  sh.innerHTML=d.kind==="detail"?detailHTML(d):d.kind==="edit"?editHTML(d):d.kind==="add"?addHTML(d):d.kind==="filters"?filtersHTML(d):d.kind==="album"?albumHTML(d):d.kind==="tlist"?tlistHTML(d):"";
+  sh.innerHTML=d.kind==="detail"?detailHTML(d):d.kind==="edit"?editHTML(d):d.kind==="add"?addHTML(d):d.kind==="filters"?filtersHTML(d):d.kind==="album"?albumHTML(d):d.kind==="tlist"?tlistHTML(d):d.kind==="nsfind"?nsfindHTML(d):"";
   sh.hidden=false; document.body.style.overflow="hidden"; sh.scrollTop=keep; d.scroll=null; hydrateImages(sh);
   sh.querySelectorAll(".pick.scroll").forEach(row=>{ const on=row.querySelector('[aria-pressed="true"]'); if(on) row.scrollLeft=Math.max(0,on.offsetLeft-row.clientWidth/2+on.offsetWidth/2); });
   if(d.kind==="add"&&fresh){ const i=$("#nsq"); if(i&&!d.results) setTimeout(()=>i.focus(),60); }
@@ -404,7 +406,7 @@ function detailHTML(d){
     ${cardH("Identity","#4338CA",'<circle cx="12" cy="12" r="8"/><path d="M9 12h6"/>',kv("Denomination",c.denom)+kv("Year",c.year)+kv("Mint / privy mark",c.mint)+kv("Theme / series",c.series)+kv("Country",c.country)+kv("Variety / error",c.variety)+(c.isSet?kv("Coins in set",c.setCount)+kv("Set contents",c.setContents):""))}
     ${cardH("Design","#DB2777",'<path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/>',kv("Effigy",c.effigy)+kv("Reverse designer",c.reverseDesigner)+(c.colourised!=null?kv("Colourised",c.colourised?"Yes":"No"):""))}
     ${cardH("Condition","#2563EB",'<path d="M4 18h16M7 14l3-4 3 3 4-6"/>',kvH("Grade",gradeText(c)?`<span class="grade" style="${gradeStyle(c.grade)}">${esc(gradeText(c))}${GRADE_NAMES[c.grade]?" · "+esc(GRADE_NAMES[c.grade]):""}</span>`:"")+kv("Finish",c.finish)+kv("Packaging",c.packaging)+kv("Serial / certificate no.",c.serial))}
-    ${cardH("Specifications","#0D9488",'<path d="M12 3v18M3 12h18"/>',kv("Composition",c.composition)+kv("Mass",unit(c.mass,"g"))+kv("Diameter",unit(c.diameter,"mm"))+kv("Thickness",unit(c.thickness,"mm"))+kv("Edge",c.edge)+kvH("Mintage",blank(c.mintage)?"":`${esc(fmtNum(c.mintage))}${+c.mintage&&+c.mintage<=50000?` <span class="grade" style="background:#FEF3C7;color:#92400E">Low mintage</span>`:""}`)+(ns?`<div class="nsbar"><span>Catalogue data provided by Numista · <a href="${esc(ns.url)}" target="_blank" rel="noopener">N# ${esc(ns.id)}</a>${ns.refs?" · "+esc(ns.refs):""}</span>${nsKey()&&!S.readOnly?`<button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsrefresh="${c.id}">Refresh</button>`:""}</div>`:""))}
+    ${cardH("Specifications","#0D9488",'<path d="M12 3v18M3 12h18"/>',kv("Composition",c.composition)+kv("Mass",unit(c.mass,"g"))+kv("Diameter",unit(c.diameter,"mm"))+kv("Thickness",unit(c.thickness,"mm"))+kv("Edge",c.edge)+kvH("Mintage",blank(c.mintage)?"":`${esc(fmtNum(c.mintage))}${+c.mintage&&+c.mintage<=50000?` <span class="grade" style="background:#FEF3C7;color:#92400E">Low mintage</span>`:""}`)+(!ns&&nsKey()&&!S.readOnly?`<div class="nsbar"><span>Not linked to Numista yet</span><button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsfind="${c.id}">Find in Numista</button></div>`:"")+(ns?`<div class="nsbar"><span>Catalogue data provided by Numista · <a href="${esc(ns.url)}" target="_blank" rel="noopener">N# ${esc(ns.id)}</a>${ns.refs?" · "+esc(ns.refs):""}</span>${nsKey()&&!S.readOnly?`<button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsrefresh="${c.id}">Refresh</button>`:""}</div>`:""))}
     ${cardH("Ownership","#D97706",'<path d="M4 7h16v12H4z"/><path d="M4 11h16"/>',kv("Quantity",qtyOf(c)>1?String(qtyOf(c)):"")+kv("How acquired",c.acqHow)+kv("Date acquired",fmtDate(c.acqDate))+kv("Source",c.source)+kv("Price paid (each)",blank(c.price)?"":(curOf(c.priceCur)==="AUD"?aud(c.price):`${fmtMoney(c.price,c.priceCur)}${pa!=null?" ("+aud(pa)+")":" (AUD pending)"}`))+kvH("Current value (each)",blank(c.value)?"":`${esc(aud(c.value))}${pa!=null&&+c.value!==pa?` <span class="grade" style="${+c.value>=pa?"background:#DCFCE7;color:#166534":"background:#FEE2E2;color:#991B1B"}">${+c.value>=pa?"+":"−"}${esc(aud(Math.abs(+c.value-pa)))}</span>`:""}${c.valueDate?`<br><span class="muted small">as at ${esc(fmtDate(c.valueDate))}</span>`:""}`)+kv("Status",isOwned(c)?"":c.status))}
     ${issues?`<section class="card"><h3><span class="ico" style="background:#0F766E"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></span>All years of this type<span class="sp"></span><span class="muted small">${issues.filter(i=>ownsIssue(ns.id,i)).length}/${issues.length}</span></h3><div class="chips wrapy" style="padding-bottom:14px">${issues.map(i=>{ const o=ownsIssue(ns.id,i); return `<span class="chip" style="${o?"background:#DDF5F2;border-color:#0D9488;color:#115E59":""}">${o?"✓ ":""}${esc(i.year)}${i.mint?" "+esc(i.mint):""}${i.mintage?` <span class="muted" style="font-weight:600">· ${esc(fmtNum(i.mintage))}</span>`:""}</span>`; }).join("")}</div></section>`:""}
     ${c.history?`<section class="card"><h3><span class="ico" style="background:#7C3AED"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg></span>Historical context</h3><p class="story">${esc(c.history)}</p></section>`:""}
@@ -416,34 +418,84 @@ function detailHTML(d){
 const shortSrc=s=>({"Royal Australian Mint":"RAM","Perth Mint":"Perth"}[s]||s||"Other");
 
 /* ---------- add: Numista search / manual / copy ---------- */
+function nsSearchBlock(d){ return `<form id="nsForm" class="searchbar" style="border:2px solid #4338CA"><label class="sr" for="nsq">Search Numista</label><input id="nsq" type="search" enterkeyhint="search" autocomplete="off" placeholder="e.g. 2022 2 dollars honey bee" value="${esc(d.q||"")}"><button class="btn sm primary" type="submit">Search</button></form>
+      <label class="check-inline"><input type="checkbox" id="nsAus" ${nsSet().ausOnly!==false?"checked":""}><span>Australian coins only</span></label>
+      ${d.busy?`<p class="muted m0">${esc(d.busy)}</p>`:""}${d.err?`<p class="warnTxt m0">${esc(d.err)}</p>`:""}${d.tried&&!d.busy&&!d.issues?`<p class="muted small m0">No exact match — showing results for "${esc(d.tried)}".</p>`:""}
+      ${d.issues?issuePicker(d):d.results?(d.results.length?`<div class="listbox">${d.results.map(r=>`<button type="button" class="nsres" data-nspick="${r.id}">${r.obverse_thumbnail?`<img src="${esc(r.obverse_thumbnail)}" alt="" referrerpolicy="no-referrer">`:`<span class="face" style="--face:48px;width:48px;height:48px"><span class="coin m-silver">?</span></span>`}<span class="tx"><b>${esc(r.title)}</b><span>${esc([r.issuer&&r.issuer.name,r.min_year===r.max_year?r.min_year:`${r.min_year||"?"}–${r.max_year||"?"}`,"N# "+r.id].filter(Boolean).join(" · "))}</span></span></button>`).join("")}<p class="m0 muted small" style="padding:8px 14px">Source: Numista</p></div>`:`<p class="muted m0">Nothing found — try fewer words, e.g. "2 dollars 2022".</p>`):`<p class="muted small m0">Tip: type the year, value and a word from the design. Picking a match fills in the specifications and reference photos.</p>`}`
+; }
+const NS_SETUP=`<div class="panel"><p class="m0">Add your free Numista API key and MyMint fills in composition, mass, diameter, mintage, designers and reference photos for you.</p><button type="button" class="btn primary" data-more-go="numista">Set up Numista</button></div>`;
 function addHTML(d){
   const key=nsKey();
   return `<div class="shead"><div class="wrap">${backBtn("Cancel")}<h2>Add a coin</h2></div></div>
   <div class="wrap sbody">
     <div class="step"><i style="background:#4338CA">1</i><h2>Find it in the Numista catalogue</h2></div>
-    ${key?`<form id="nsForm" class="searchbar" style="border:2px solid #4338CA"><label class="sr" for="nsq">Search Numista</label><input id="nsq" type="search" enterkeyhint="search" autocomplete="off" placeholder="e.g. 2022 2 dollars honey bee" value="${esc(d.q||"")}"><button class="btn sm primary" type="submit">Search</button></form>
-      <label class="check-inline"><input type="checkbox" id="nsAus" ${nsSet().ausOnly!==false?"checked":""}><span>Australian coins only</span></label>
-      ${d.busy?`<p class="muted m0">${esc(d.busy)}</p>`:""}${d.err?`<p class="warnTxt m0">${esc(d.err)}</p>`:""}
-      ${d.issues?issuePicker(d):d.results?(d.results.length?`<div class="listbox">${d.results.map(r=>`<button type="button" class="nsres" data-nspick="${r.id}">${r.obverse_thumbnail?`<img src="${esc(r.obverse_thumbnail)}" alt="" referrerpolicy="no-referrer">`:`<span class="face" style="--face:48px;width:48px;height:48px"><span class="coin m-silver">?</span></span>`}<span class="tx"><b>${esc(r.title)}</b><span>${esc([r.issuer&&r.issuer.name,r.min_year===r.max_year?r.min_year:`${r.min_year||"?"}–${r.max_year||"?"}`,"N# "+r.id].filter(Boolean).join(" · "))}</span></span></button>`).join("")}<p class="m0 muted small" style="padding:8px 14px">Source: Numista</p></div>`:`<p class="muted m0">Nothing found — try fewer words, e.g. "2 dollars 2022".</p>`):`<p class="muted small m0">Tip: type the year, value and a word from the design. Picking a match fills in the specifications and reference photos.</p>`}`
-      :`<div class="panel"><p class="m0">Add your free Numista API key and MyMint fills in composition, mass, diameter, mintage, designers and reference photos for you.</p><button type="button" class="btn primary" data-more-go="numista">Set up Numista</button></div>`}
+    ${key?nsSearchBlock(d):NS_SETUP}
     <div class="step" style="margin-top:6px"><i style="background:#D97706">2</i><h2>Or start another way</h2></div>
     <div class="row"><button type="button" class="btn" data-manual>Enter manually</button><button type="button" class="btn" data-copyfrom>${d.copy?"Hide":"Copy an existing coin"}</button></div>
     ${d.copy?`<div class="field"><label for="cpq">Find the coin to copy</label><input id="cpq" type="search" value="${esc(d.cq||"")}" placeholder="e.g. 2021 $2"></div><div class="listbox" id="cpList">${copyList(d.cq||"")}</div>`:""}
   </div>`;
 }
+function nsfindHTML(d){
+  const c=d.target.draft;
+  return `<div class="shead"><div class="wrap">${backBtn("Back")}<h2>Find in Numista</h2></div></div>
+  <div class="wrap sbody">
+    <div class="todo" style="background:#DDF5F2"><span><b>${esc(titleOf(c))}</b><br><span class="muted">Pick the matching coin. Only empty details are filled in — anything you've entered is kept.</span></span></div>
+    ${nsKey()?nsSearchBlock(d):NS_SETUP}
+  </div>`;
+}
+function nsQueryFor(c){
+  const dq=c.denom?(c.denom.match(/^\$(\d+)/)?`${RegExp.$1} dollar${RegExp.$1==="1"?"":"s"}`:c.denom.match(/^(\d+)c$/)?`${RegExp.$1} cents`:c.denom):"";
+  let words=c.series||titleOf(c);
+  words=words.replace(/\b(19|20)\d\d(\s*[-–]\s*(19|20)\d\d)?\b/g," ").replace(/\$\d+|\b\d+c\b/gi," ").replace(/\b(uncirculated|circulating|circulated|coloured|colour|color|coin|coins|card|ram|dcpl|on|in|the|of|and|al-br|frosted|silver|set|collection|privy|mark|four|seven|\d+-coin|volume|1|anniversary|australian|australia|end|50th|centenary|commemorative)\b/gi," ").replace(/[–\-:()]/g," ").replace(/\s+/g," ").trim();
+  return [yearNum(c)||"",dq,words].filter(Boolean).join(" ");
+}
+async function nsLink(d,issue){
+  const t=d.type, tgt=d.target, c=tgt.draft; d.busy="Filling in details and reference photos…"; d.issues=null; drawTop();
+  applyNs(c,fromNumista(t,issue),false); c.ns=nsInfo(t,d.typeIssues);
+  if(!(c.photos||[]).some(p=>!p.mine&&p.source==="Numista")){ c.photos=c.photos||[];
+    for(const [side,obj] of [["Obverse",t.obverse],["Reverse",t.reverse]]){ const pic=obj&&(obj.picture||obj.thumbnail); if(!pic) continue; const r=await nsImage(pic); if(!r) continue; if(!r.url) tgt.newFiles.push(r.id); c.photos.push({id:r.id,url:r.url,mine:false,side,source:"Numista",link:c.ns.url}); } }
+  d.busy=""; await popView(); toast("Filled from Numista — check the details, then Save");
+}
 function copyList(q){ const l=sorted(S.coins.filter(c=>matchQuery(c,q)).slice()).slice(0,40); return l.length?l.map(c=>`<button type="button" class="lrow" data-copy="${c.id}">${faceHTML(c)}<span class="tx"><span class="t1">${esc(titleOf(c))}</span><span class="t2">Copies the coin details, not the photos or purchase</span></span></button>`).join(""):`<p class="muted small" style="padding:12px">No coins match.</p>`; }
 function issuePicker(d){ return `<div class="panel"><h3>${esc(d.type.title)}</h3><p class="m0 muted small">Which year and mint mark is yours?</p><div class="pick">${d.issues.map((i,k)=>`<button type="button" data-issue="${k}">${esc(i.year!=null?i.year:i.gregorian_year)}${i.mint_letter?" "+esc(i.mint_letter):""}${i.mintage?` <span style="font-weight:500;opacity:.8">· ${esc(fmtNum(i.mintage))}</span>`:""}</button>`).join("")}</div><button type="button" class="btn ghost" data-issue="-1">Not sure — choose later</button></div>`; }
+function nsAttempts(q){
+  const yrs=(q.match(/\b(19|20)\d\d\b/g)||[]); const noY=q.replace(/\b(19|20)\d\d\b/g," ").replace(/\s+/g," ").trim();
+  const dm=noY.match(/^\d+\s+(dollars?|cents?)\b/i); const dq=dm?dm[0]:""; const words=(dm?noY.slice(dm[0].length):noY).trim().split(" ").filter(w=>w.length>2);
+  const longest=words.slice().sort((a,b)=>b.length-a.length)[0]||"";
+  const list=[q,noY,[dq,...words.slice(-2)].join(" ").trim(),[dq,longest].join(" ").trim(),words.slice(-2).join(" "),longest];
+  return {list:[...new Set(list.map(x=>x.trim()).filter(Boolean))],year:yrs[0]?+yrs[0]:null};
+}
+async function nsAusCode(){
+  if(S.meta.nsAus!==undefined) return S.meta.nsAus;
+  let code=null;
+  try{ const j=await nsFetch(`/issuers`); const list=asList(j.issuers?j.issuers:j); const hit=list.find(i=>/^australia$/i.test((i.name||"").trim()))||list.find(i=>/^australia\b/i.test((i.name||"").trim())&&!/state|colony|territor|antarctic/i.test(i.name||"")); code=hit?hit.code:null; }catch(e){ if(/key|limit|connection|reach/i.test(e.message)) throw e; }
+  S.meta.nsAus=code; saveMeta().catch(()=>{}); return code;
+}
+async function nsQuery(q,aus){
+  let list=null;
+  const code=aus?await nsAusCode():null;
+  if(code){ try{ list=(await nsFetch(`/types?q=${encodeURIComponent(q)}&category=coin&count=50&issuer=${encodeURIComponent(code)}`)).types||[]; }catch(e){ if(/key|limit|connection|reach/i.test(e.message)) throw e; if(e.status===400){ S.meta.nsAus=null; saveMeta().catch(()=>{}); } list=null; } }
+  if(!list||!list.length){ list=(await nsFetch(`/types?q=${encodeURIComponent(q)}&category=coin&count=50`)).types||[]; if(aus){ const au=list.filter(r=>/australia/i.test((r.issuer&&r.issuer.name)||"")); list=au; } }
+  return list;
+}
 async function nsSearch(d){
-  const q=(d.q||"").trim(); if(!q) return; d.busy="Searching Numista…"; d.err=""; d.issues=null; drawTop();
-  try{ const aus=nsSet().ausOnly!==false; const j=await nsFetch(`/types?q=${encodeURIComponent(q)}&category=coin&count=30${aus?"&issuer=australia":""}`); d.results=j.types||[]; }
+  const q=(d.q||"").trim(); if(!q) return; d.busy="Searching Numista…"; d.err=""; d.issues=null; d.tried=null; drawTop();
+  try{ const aus=nsSet().ausOnly!==false; const {list:tries,year}=nsAttempts(q); let res=[], used=q;
+    for(const t of tries.slice(0,4)){ res=await nsQuery(t,aus); used=t; if(res.length) break; }
+    if(year) res.sort((a,b)=>{ const ina=(a.min_year||0)<=year&&year<=(a.max_year||9999), inb=(b.min_year||0)<=year&&year<=(b.max_year||9999); return inb-ina; });
+    d.results=res; if(used!==q&&res.length) d.tried=used; }
   catch(e){ d.err=e.message||String(e); d.results=null; }
   d.busy=""; if(topV()===d) drawTop();
 }
 async function nsPick(d,id){
   d.busy="Getting details from Numista…"; d.err=""; drawTop();
-  try{ const t=await nsFetch(`/types/${id}`); let issues=[]; try{ issues=await nsFetch(`/types/${id}/issues`); }catch{}
+  try{ const t=await nsFetch(`/types/${id}`); let issues=[]; try{ issues=asList(await nsFetch(`/types/${id}/issues`)); }catch{}
     d.type=t; d.typeIssues=issues||[]; d.busy="";
+    if(d.kind==="nsfind"&&(issues||[]).length){ const c=d.target.draft, y=String(yearNum(c)||""), m=(c.mint&&c.mint!=="None"&&c.mint!=="Privy mark")?c.mint:null;
+      let hits=issues.filter(i=>String(i.year!=null?i.year:i.gregorian_year)===y); if(m) hits=hits.filter(i=>(i.mint_letter||"")===m); else if(c.mint==="None") hits=hits.filter(i=>!i.mint_letter);
+      if(hits.length===1){ await nsLink(d,hits[0]); return; } }
     if((issues||[]).length>1){ d.issues=issues; drawTop(); return; }
+    if(d.kind==="nsfind"){ await nsLink(d,(issues||[])[0]||null); return; }
     await nsBuild(d,(issues||[])[0]||null);
   }catch(e){ d.busy=""; d.err=e.message||String(e); drawTop(); }
 }
@@ -465,7 +517,7 @@ function editHTML(d){
   const c=d.draft, isNew=!d.id, specN=["composition","mass","diameter","thickness","edge","mintage"].filter(k=>!blank(c[k])).length, desN=["effigy","reverseDesigner","variety"].filter(k=>!blank(c[k])).length;
   return `<div class="shead"><div class="wrap">${backBtn("Cancel")}<h2>${isNew?"New coin":"Edit coin"}</h2><button type="button" class="btn sm amber" data-save>Save</button></div></div>
   <div class="wrap sbody">${datalists()}
-  ${c.ns?`<div class="nsbar" style="margin:0"><span>Filled in from Numista · N# ${esc(c.ns.id)}. Check the details and add your own below.</span></div>`:""}
+  ${c.ns?`<div class="nsbar" style="margin:0"><span>Linked to Numista · N# ${esc(c.ns.id)}. Check the details and add your own below.</span>${nsKey()?`<button type="button" class="btn sm" data-nsfind="edit">Change</button>`:""}</div>`:nsKey()?`<div class="nsbar" style="margin:0"><span>Not linked to Numista yet — find it to fill in specs, designers, mintage and reference photos.</span><button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsfind="edit">Find in Numista</button></div>`:""}
   <section class="fsec"><h3><span class="ico" style="background:#4338CA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="8"/></svg></span>The coin</h3>
     <div class="field"><span class="flabel">Denomination</span>${pick("denom",DENOMS.map(d=>d.k),c.denom,null,true)}</div>
     <div class="grid2">${inp("year","Year",c,{num:"numeric",ph:"e.g. 2022"})}${inp("mint","Mint / privy mark",c,{list:"mint",ph:"C, S, None…"})}</div>
@@ -500,7 +552,7 @@ function editHTML(d){
   <details class="fsec" ${c.history||c.notes?"":""}><summary><span class="ico" style="background:#7C3AED"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 4h11l3 3v13H5z"/></svg></span>Story &amp; notes<span class="sp"></span><span class="hint">${[c.history?"context":"",c.notes?"notes":""].filter(Boolean).join(", ")}</span></summary>
     ${inp("history","Historical context",c,{area:true,ph:"The background story of the coin"})}${inp("notes","Notes",c,{area:true,ph:"Your own remarks"})}</details>
   <details class="fsec"><summary><span class="ico" style="background:#475569"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>Catalogue link<span class="sp"></span><span class="hint">${c.ns?"N# "+esc(c.ns.id):""}</span></summary>
-    <div class="field"><label for="f_nsid">Numista number (N#)</label><div class="inrow"><input id="f_nsid" inputmode="numeric" value="${esc(c.ns?c.ns.id:"")}" placeholder="e.g. 351234" style="flex:1">${nsKey()?`<button type="button" class="btn" data-nslink>Fill from Numista</button>`:""}</div><span class="hint">Fills empty fields only — anything you've typed is kept.</span></div></details>
+    ${nsKey()?`<button type="button" class="btn primary" data-nsfind="edit">Find in Numista</button><p class="m0 muted small">Or, if you already know its number:</p>`:""}<div class="field"><label for="f_nsid">Numista number (N#)</label><div class="inrow"><input id="f_nsid" inputmode="numeric" value="${esc(c.ns?c.ns.id:"")}" placeholder="e.g. 351234" style="flex:1">${nsKey()?`<button type="button" class="btn" data-nslink>Fill from Numista</button>`:""}</div><span class="hint">Fills empty fields only — anything you've typed is kept.</span></div></details>
   ${!isNew?"":`<p class="muted small m0" style="text-align:center">Only the denomination or a name is needed to save — you can add the rest later.</p>`}
   </div>
   <div class="savebar"><div class="wrap"><button type="button" class="btn" data-back>Cancel</button><button type="button" class="btn primary" data-save>Save coin</button></div></div>`;
@@ -535,7 +587,7 @@ function clean(c){
   if(!blank(c.mintage)) c.mintage=String(c.mintage).replace(/[,\s]/g,"");
   c.qty=Math.max(1,parseInt(c.qty,10)||1);
   if(c.sheldon&&!/^\d{1,2}$/.test(c.sheldon)) c.sheldon="";
-  if(!c.isSet){ delete c.setCount; delete c.setContents; }
+  if(!c.isSet){ delete c.isSet; delete c.setCount; delete c.setContents; }
   if(curOf(c.priceCur)==="AUD"){ delete c.priceAud; delete c.priceRate; }
   for(const k of Object.keys(c)) if(c[k]===""||c[k]==null) delete c[k];
   return c;
@@ -584,6 +636,7 @@ function filtersHTML(){
   </div>
   <div class="savebar"><div class="wrap"><button type="button" class="btn primary" data-back>Show ${n} coin${n===1?"":"s"}</button></div></div>`;
 }
+function updFilterCount(){ const b=document.querySelector("#sheet .savebar [data-back]"); if(b&&topV()&&topV().kind==="filters"){ const n=results().length; b.textContent=`Show ${n} coin${n===1?"":"s"}`; } }
 /* ---------- album and year checklist sheets ---------- */
 function albumHTML(d){
   const a=albumData().find(x=>x.key===d.key)||{key:d.key,coins:[],wants:[]}; const o=a.coins.length,w=a.wants.length;
@@ -631,7 +684,7 @@ document.addEventListener("click",async e=>{
   if(d.open){ openView({kind:"detail",id:d.open}); return; }
   if(d.mode){ view().mode=d.mode; saveMeta(); render(); return; }
   if(d.size){ view().size=d.size; saveMeta(); render(); return; }
-  if(d.grp){ const g=S.f.grp; S.f.grp=g.includes(d.grp)?g.filter(x=>x!==d.grp):[...g,d.grp]; if(topV()&&topV().kind==="filters"){ drawTop(); return; } render(); return; }
+  if(d.grp){ const g=S.f.grp; S.f.grp=g.includes(d.grp)?g.filter(x=>x!==d.grp):[...g,d.grp]; if(topV()&&topV().kind==="filters"){ b.setAttribute("aria-pressed",String(S.f.grp.includes(d.grp))); updFilterCount(); return; } render(); return; }
   if(d.qf){ S.f[d.qf]=!S.f[d.qf]; render(); return; }
   if(d.unf){ clearFilter(d.unf); render(); return; }
   if("clearall" in d){ S.f=clone(FDEF); S.q=""; if(topV()&&topV().kind==="filters"){ drawTop(); return; } render(); return; }
@@ -656,7 +709,9 @@ document.addEventListener("click",async e=>{
   if("copyfrom" in d){ const t=topV(); t.copy=!t.copy; drawTop(); return; }
   if(d.copy){ const c=clone(S.coins.find(x=>x.id===d.copy)); for(const k of ["id","addedAt","updatedAt","photos","coverId","serial","price","priceAud","priceRate","acqDate","source","value","valueDate","notes","status","qty","year","mintage"]) delete c[k]; c.photos=[]; c.qty=1; c.acqDate=todayISO(); c.status="In collection"; replaceView({kind:"edit",id:null,draft:c,newFiles:[],removedFiles:[]}); toast("Copied — fill in the year and what's different"); return; }
   if(d.nspick){ await nsPick(topV(),d.nspick); return; }
-  if(d.issue!=null){ const t=topV(); await nsBuild(t,+d.issue<0?null:t.issues[+d.issue]); return; }
+  if(d.issue!=null){ const t=topV(); const is=+d.issue<0?null:t.issues[+d.issue]; if(t.kind==="nsfind") await nsLink(t,is); else await nsBuild(t,is); return; }
+  if(d.nsfind!=null){ if(d.nsfind==="edit"){ readForm(); const tg=topV(); const v={kind:"nsfind",target:tg,q:nsQueryFor(tg.draft)}; openView(v); if(nsKey()) nsSearch(v); return; }
+    const c=S.coins.find(x=>x.id===d.nsfind); const ed={kind:"edit",id:c.id,draft:clone(c),newFiles:[],removedFiles:[]}; openView(ed); const v={kind:"nsfind",target:ed,q:nsQueryFor(ed.draft)}; openView(v); if(nsKey()) nsSearch(v); return; }
   /* edit form */
   if(d.pk){ const t=topV(); const c=t.draft; let v=d.pv; const on=b.getAttribute("aria-pressed")==="true";
     if(d.pk==="status"&&on) return;
@@ -673,17 +728,17 @@ document.addEventListener("click",async e=>{
   if(d.prm!=null){ readForm(); const t=topV(); const [p]=t.draft.photos.splice(+d.prm,1); if(!p.url){ if(t.newFiles.includes(p.id)){ t.newFiles=t.newFiles.filter(x=>x!==p.id); await dbDel("files",p.id); } else t.removedFiles.push(p.id); } if(t.draft.coverId===p.id) delete t.draft.coverId; drawPhotos(); return; }
   if("save" in d){ b.disabled=true; try{ await saveCoin(); }catch(err){ toast("Couldn't save: "+(err&&err.message||err)); } b.disabled=false; return; }
   if("nslink" in d){ const id=($("#f_nsid").value||"").trim(); if(!/^\d+$/.test(id)){ toast("Type the Numista number first"); return; } readForm(); const t=topV(); toast("Getting details from Numista…");
-    try{ const ty=await nsFetch(`/types/${id}`); let issues=[]; try{ issues=await nsFetch(`/types/${id}/issues`); }catch{} const c=t.draft; const issue=issues.find(i=>String(i.year)===String(yearNum(c))&&(i.mint_letter||"")===((c.mint&&c.mint!=="None")?c.mint:""))||null; applyNs(c,fromNumista(ty,issue),false); c.ns=nsInfo(ty,issues);
+    try{ const ty=await nsFetch(`/types/${id}`); let issues=[]; try{ issues=asList(await nsFetch(`/types/${id}/issues`)); }catch{} const c=t.draft; const issue=issues.find(i=>String(i.year)===String(yearNum(c))&&(i.mint_letter||"")===((c.mint&&c.mint!=="None")?c.mint:""))||null; applyNs(c,fromNumista(ty,issue),false); c.ns=nsInfo(ty,issues);
       if(!(c.photos||[]).some(p=>!p.mine&&p.source==="Numista")) for(const [side,obj] of [["Obverse",ty.obverse],["Reverse",ty.reverse]]){ const pic=obj&&(obj.picture||obj.thumbnail); if(!pic) continue; const r=await nsImage(pic); if(!r) continue; if(!r.url) t.newFiles.push(r.id); c.photos.push({id:r.id,url:r.url,mine:false,side,source:"Numista",link:c.ns.url}); }
       drawTop(); toast("Filled from Numista — your own entries were kept"); }catch(err){ toast(err.message||String(err)); } return; }
   /* wants */
   if(d.wgot){ const w=S.wanted.find(x=>x.id===d.wgot); const draft=blankCoin(); draft.denom=w.denom||""; draft.year=w.year||""; draft.series=w.series||""; draft.title=w.title||""; openView({kind:"edit",id:null,draft,newFiles:[],removedFiles:[],fromWant:w.id}); return; }
   if(d.wdel){ await dbDel("wanted",d.wdel); await reload(); render(); toast("Removed from want list"); return; }
-  if(d.addwant!=null){ while(S.stack.length){ const x=S.stack.pop(); await cleanupView(x); } S._ignorePop=true; history.back(); $("#sheet").hidden=true; document.body.style.overflow=""; S.tab="wants"; render(); scrollTo(0,0); const det=document.querySelector("details.fsec"); if(det) det.open=true; const sr=$("#w_series"); if(sr){ sr.value=d.addwant; $("#w_title").focus(); } return; }
+  if(d.addwant!=null){ const had=S.stack.length; while(S.stack.length){ const x=S.stack.pop(); await cleanupView(x); } if(had){ S._ignorePop=true; history.back(); } $("#sheet").hidden=true; document.body.style.overflow=""; S.tab="wants"; render(); scrollTo(0,0); const det=document.querySelector("details.fsec"); if(det) det.open=true; const sr=$("#w_series"); if(sr){ sr.value=d.addwant; $("#w_title").focus(); } return; }
   if(d.wantissue){ const [id,yr,mt]=d.wantissue.split("|"); const t=typeLists().find(x=>String(x.id)===id); const c0=t.coins[0]; await dbPut("wanted",{id:uid("w"),title:`${yr} ${c0.denom||""} ${t.title}${mt?" ("+mt+")":""}`.replace(/\s+/g," ").trim(),denom:c0.denom||"",year:yr,series:c0.series||"",got:false,addedAt:new Date().toISOString()}); await reload(); toast("Added to your want list"); drawTop(); return; }
   /* numista settings */
   if("nssave" in d){ const s={...nsSet(),key:$("#nsKeyIn").value.trim(),ausOnly:$("#nsAusSet").checked}; await dbPut("settings",s); await reload(); render(); toast(s.key?"Numista key saved":"Numista key removed"); return; }
-  if("nstest" in d){ $("#nsStat").textContent="Testing…"; try{ const j=await nsFetch(`/types?q=${encodeURIComponent("2 dollars")}&issuer=australia&category=coin&count=1`); $("#nsStat").textContent=`Working ✓ — Numista has ${fmtNum(j.count||0)} Australian $2 entries. ${nsUsage()}`; }catch(err){ $("#nsStat").textContent=err.message||String(err); } return; }
+  if("nstest" in d){ $("#nsStat").textContent="Testing…"; try{ const code=await nsAusCode(); const j=await nsFetch(`/types?q=${encodeURIComponent("2 dollars")}&category=coin&count=1${code?"&issuer="+encodeURIComponent(code):""}`); $("#nsStat").textContent=`Working ✓ — Numista found ${fmtNum(j.count||0)} ${code?"Australian ":""}matches for "2 dollars"${code?"":" (Australia filter not found — results are filtered in the app instead)"}. ${nsUsage()}`; }catch(err){ $("#nsStat").textContent=err.message||String(err); } return; }
   /* more */
   if("mkreport" in d){ S.rep.photos=$("#rPhotos").checked; S.rep.sold=$("#rSold").checked; S.rep.by=$("#rBy").value.trim(); b.disabled=true; try{ await makeReport(); }catch(err){ toast("Couldn't create the report: "+(err&&err.message||err)); } b.disabled=false; return; }
   if("copycsv" in d){ const ta=$("#csvText"); try{ await navigator.clipboard.writeText(ta.value); toast("CSV copied"); }catch{ ta.focus(); ta.select(); toast("Text selected — copy it from here"); } return; }
@@ -707,7 +762,7 @@ document.addEventListener("input",e=>{
   if(el.id==="q"){ S.q=el.value; const cb=document.querySelector("[data-clearq]"); if(cb) cb.hidden=!S.q; clearTimeout(_qT); _qT=setTimeout(()=>{ const r=$("#results"); if(r){ r.innerHTML=resultsHTML(); hydrateImages(r); } },120); return; }
   if(el.id==="nsq"){ topV().q=el.value; return; }
   if(el.id==="cpq"){ const t=topV(); t.cq=el.value; const l=$("#cpList"); if(l){ l.innerHTML=copyList(el.value); hydrateImages(l); } return; }
-  if(el.dataset.ff){ const k=el.dataset.ff; S.f[k]=el.value.trim(); return; }
+  if(el.dataset.ff){ const k=el.dataset.ff; S.f[k]=el.value.trim(); updFilterCount(); return; }
   if(el.dataset.plink!=null){ topV().draft.photos[+el.dataset.plink].link=el.value; return; }
   if(["f_year","f_series"].includes(el.id)){ const c=readForm(); const ti=$("#f_title"); if(ti) ti.placeholder=autoTitle(c)||"e.g. 2022 $2 Honey Bee"; return; }
   if(el.id==="f_price"){ const c=readForm(); delete c.priceAud; const n=$("#audNote"); if(n&&curOf(c.priceCur)!=="AUD") n.textContent="Converted to AUD when you save (needs internet)"; return; }
@@ -717,8 +772,8 @@ document.addEventListener("change",async e=>{
   if(el.id==="dbxWifi"){ await setDbx({wifiOnly:el.checked}); refreshDbxPanel(); return; }
   if(el.id==="sortSel"){ view().sort=el.value; saveMeta(); const r=$("#results"); r.innerHTML=resultsHTML(); hydrateImages(r); return; }
   if(el.id==="groupSel"){ view().group=el.value; saveMeta(); const r=$("#results"); r.innerHTML=resultsHTML(); hydrateImages(r); return; }
-  if(el.dataset.ff){ const k=el.dataset.ff; if(k==="status") S.f.status=el.value||"owned"; else S.f[k]=el.value.trim(); if(topV()&&topV().kind==="filters") drawTop(); return; }
-  if(el.dataset.ffc){ S.f[el.dataset.ffc]=el.checked; drawTop(); return; }
+  if(el.dataset.ff){ const k=el.dataset.ff; if(k==="status") S.f.status=el.value||"owned"; else S.f[k]=el.value.trim(); updFilterCount(); return; }
+  if(el.dataset.ffc){ S.f[el.dataset.ffc]=el.checked; updFilterCount(); return; }
   if(el.id==="f_isSet"){ $("#setFields").hidden=!el.checked; topV().draft.isSet=el.checked; return; }
   if(el.id==="f_priceCur"){ const c=readForm(); delete c.priceAud; const n=$("#audNote"); if(n) n.textContent=curOf(c.priceCur)!=="AUD"?"Converted to AUD when you save (needs internet)":""; return; }
   if(el.dataset.pside!=null){ readForm(); topV().draft.photos[+el.dataset.pside].side=el.value; return; }
