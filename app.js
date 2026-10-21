@@ -29,6 +29,7 @@ const GROUPS={
 const GRP_ORDER=["big","dollar","fifty","twenty","small","bronze","pre","other"];
 const GRADES=["G","VG","F","VF","EF","aUNC","UNC","BU"];
 const GRADE_NAMES={G:"Good",VG:"Very Good",F:"Fine",VF:"Very Fine",EF:"Extremely Fine",aUNC:"About Uncirculated",UNC:"Uncirculated",BU:"Brilliant Uncirculated"};
+const GRADE_HINTS={G:"Good (4–6): heavily worn, design mostly flat, date readable.",VG:"Very Good (8–10): central detail worn flat, rims full.",F:"Fine (12–15): about half the detail worn, lettering sharp.",VF:"Very Fine (20–35): light to moderate wear, major features clear.",EF:"Extremely Fine (40–45): only the high points lightly worn.",aUNC:"About Uncirculated (50–58): trace of rub on the highest points.",UNC:"Uncirculated (60–70): no wear at all.",BU:"Brilliant Uncirculated: no wear, full original lustre."};
 const FINISHES=["Circulating","Uncirculated","Frosted uncirculated","Proof","Specimen"];
 const PACKS=["Loose","Card","RAM card","DCPL card","Set / folder","Capsule","Flip","2x2 holder","Slab","Album"];
 const HOWS=["Bought","Noodled","Gift","Swapped","Inherited"];
@@ -243,11 +244,12 @@ const backMore=`<button type="button" class="btn sm" data-more="" style="align-s
 function menuIco(bg,path){ return `<span class="ico" style="background:${bg};width:40px;height:40px;border-radius:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px">${path}</svg></span>`; }
 function viewMore(){
   const mv=S.moreView;
-  if(mv==="backup") return viewBackup(); if(mv==="numista") return viewNumista(); if(mv==="stats") return viewStats(); if(mv==="export") return viewExport(); if(mv==="report") return viewReport(); if(mv==="about") return viewAbout();
+  if(mv==="backup") return viewBackup(); if(mv==="numista") return viewNumista(); if(mv==="stats") return viewStats(); if(mv==="export") return viewExport(); if(mv==="report") return viewReport(); if(mv==="about") return viewAbout(); if(mv==="guide") return viewGuide();
   const k=nsKey();
   return `<section class="view"><div class="hero" style="padding-top:12px"><h1 style="color:#fff;font-size:22px">More</h1></div><div class="menu">
     <button type="button" data-more="backup">${menuIco("#4338CA",'<path d="M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/>')}<span class="tx"><b>Backup &amp; restore</b><span class="muted small">${S.readOnly?"View only":dbxOn()?"Kept in Dropbox":"Connect Dropbox, or make a backup file"}${S.meta.changes?` · ${S.meta.changes} not backed up`:""}</span></span></button>
     <button type="button" data-more="numista">${menuIco("#0D9488",'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>')}<span class="tx"><b>Numista lookups</b><span class="muted small">${k?"Key saved · "+nsUsage():"Add your free API key"}</span></span></button>
+    <button type="button" data-more="guide">${menuIco("#2563EB",'<path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/>')}<span class="tx"><b>Collector's guide</b><span class="muted small">Grades, finishes, mint marks, care</span></span></button>
     <button type="button" data-more="stats">${menuIco("#D97706",'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>')}<span class="tx"><b>Statistics</b><span class="muted small">Totals, value, by denomination</span></span></button>
     <button type="button" data-more="report">${menuIco("#7C3AED",'<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>')}<span class="tx"><b>Insurance report</b><span class="muted small">PDF listing with photos and values</span></span></button>
     <button type="button" data-more="export">${menuIco("#0284C7",'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>')}<span class="tx"><b>Export CSV</b><span class="muted small">Spreadsheet copy for Excel</span></span></button>
@@ -372,9 +374,10 @@ function drawTop(fresh){
   const sh=$("#sheet"), d=S.stack[S.stack.length-1];
   if(!d){ sh.hidden=true; sh.innerHTML=""; document.body.style.overflow=""; render(); return; }
   const keep=fresh?0:(d.scroll!=null?d.scroll:sh.scrollTop);
-  sh.innerHTML=d.kind==="detail"?detailHTML(d):d.kind==="edit"?editHTML(d):d.kind==="add"?addHTML(d):d.kind==="filters"?filtersHTML(d):d.kind==="album"?albumHTML(d):d.kind==="tlist"?tlistHTML(d):d.kind==="nsfind"?nsfindHTML(d):"";
+  sh.innerHTML=d.kind==="detail"?detailHTML(d):d.kind==="edit"?editHTML(d):d.kind==="add"?addHTML(d):d.kind==="filters"?filtersHTML(d):d.kind==="album"?albumHTML(d):d.kind==="tlist"?tlistHTML(d):d.kind==="nsfind"?nsfindHTML(d):d.kind==="guide"?guideHTML(d):"";
   sh.hidden=false; document.body.style.overflow="hidden"; sh.scrollTop=keep; d.scroll=null; hydrateImages(sh);
   sh.querySelectorAll(".pick.scroll").forEach(row=>{ const on=row.querySelector('[aria-pressed="true"]'); if(on) row.scrollLeft=Math.max(0,on.offsetLeft-row.clientWidth/2+on.offsetWidth/2); });
+  if(d.kind==="guide"&&fresh&&d.open){ const el=document.getElementById("g_"+d.open); if(el) setTimeout(()=>{ sh.scrollTop=el.offsetTop-70; },30); }
   if(d.kind==="add"&&fresh){ const i=$("#nsq"); if(i&&!d.results) setTimeout(()=>i.focus(),60); }
 }
 const topV=()=>S.stack[S.stack.length-1];
@@ -405,7 +408,7 @@ function detailHTML(d){
     ${c.storage?`<div class="todo" style="background:#EDE9FE"><span class="ico" style="background:#7C3AED"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span><span><b>Kept in:</b> ${esc(c.storage)}</span></div>`:""}
     ${cardH("Identity","#4338CA",'<circle cx="12" cy="12" r="8"/><path d="M9 12h6"/>',kv("Denomination",c.denom)+kv("Year",c.year)+kv("Mint / privy mark",c.mint)+kv("Theme / series",c.series)+kv("Country",c.country)+kv("Variety / error",c.variety)+(c.isSet?kv("Coins in set",c.setCount)+kv("Set contents",c.setContents):""))}
     ${cardH("Design","#DB2777",'<path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/>',kv("Effigy",c.effigy)+kv("Reverse designer",c.reverseDesigner)+(c.colourised!=null?kv("Colourised",c.colourised?"Yes":"No"):""))}
-    ${cardH("Condition","#2563EB",'<path d="M4 18h16M7 14l3-4 3 3 4-6"/>',kvH("Grade",gradeText(c)?`<span class="grade" style="${gradeStyle(c.grade)}">${esc(gradeText(c))}${GRADE_NAMES[c.grade]?" · "+esc(GRADE_NAMES[c.grade]):""}</span>`:"")+kv("Finish",c.finish)+kv("Packaging",c.packaging)+kv("Serial / certificate no.",c.serial))}
+    ${cardH("Condition","#2563EB",'<path d="M4 18h16M7 14l3-4 3 3 4-6"/>',kvH("Grade",gradeText(c)?`<span class="grade" style="${gradeStyle(c.grade)}">${esc(gradeText(c))}${GRADE_NAMES[c.grade]?" · "+esc(GRADE_NAMES[c.grade]):""}</span> ${infoBtn("grades")}`:"")+kv("Finish",c.finish)+kv("Packaging",c.packaging)+kv("Serial / certificate no.",c.serial))}
     ${cardH("Specifications","#0D9488",'<path d="M12 3v18M3 12h18"/>',kv("Composition",c.composition)+kv("Mass",unit(c.mass,"g"))+kv("Diameter",unit(c.diameter,"mm"))+kv("Thickness",unit(c.thickness,"mm"))+kv("Edge",c.edge)+kvH("Mintage",blank(c.mintage)?"":`${esc(fmtNum(c.mintage))}${+c.mintage&&+c.mintage<=50000?` <span class="grade" style="background:#FEF3C7;color:#92400E">Low mintage</span>`:""}`)+(!ns&&nsKey()&&!S.readOnly?`<div class="nsbar"><span>Not linked to Numista yet</span><button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsfind="${c.id}">Find in Numista</button></div>`:"")+(ns?`<div class="nsbar"><span>Catalogue data provided by Numista · <a href="${esc(ns.url)}" target="_blank" rel="noopener">N# ${esc(ns.id)}</a>${ns.refs?" · "+esc(ns.refs):""}</span>${nsKey()&&!S.readOnly?`<button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsrefresh="${c.id}">Refresh</button>`:""}</div>`:""))}
     ${cardH("Ownership","#D97706",'<path d="M4 7h16v12H4z"/><path d="M4 11h16"/>',kv("Quantity",qtyOf(c)>1?String(qtyOf(c)):"")+kv("How acquired",c.acqHow)+kv("Date acquired",fmtDate(c.acqDate))+kv("Source",c.source)+kv("Price paid (each)",blank(c.price)?"":(curOf(c.priceCur)==="AUD"?aud(c.price):`${fmtMoney(c.price,c.priceCur)}${pa!=null?" ("+aud(pa)+")":" (AUD pending)"}`))+kvH("Current value (each)",blank(c.value)?"":`${esc(aud(c.value))}${pa!=null&&+c.value!==pa?` <span class="grade" style="${+c.value>=pa?"background:#DCFCE7;color:#166534":"background:#FEE2E2;color:#991B1B"}">${+c.value>=pa?"+":"−"}${esc(aud(Math.abs(+c.value-pa)))}</span>`:""}${c.valueDate?`<br><span class="muted small">as at ${esc(fmtDate(c.valueDate))}</span>`:""}`)+kv("Status",isOwned(c)?"":c.status))}
     ${issues?`<section class="card"><h3><span class="ico" style="background:#0F766E"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></span>All years of this type<span class="sp"></span><span class="muted small">${issues.filter(i=>ownsIssue(ns.id,i)).length}/${issues.length}</span></h3><div class="chips wrapy" style="padding-bottom:14px">${issues.map(i=>{ const o=ownsIssue(ns.id,i); return `<span class="chip" style="${o?"background:#DDF5F2;border-color:#0D9488;color:#115E59":""}">${o?"✓ ":""}${esc(i.year)}${i.mint?" "+esc(i.mint):""}${i.mintage?` <span class="muted" style="font-weight:600">· ${esc(fmtNum(i.mintage))}</span>`:""}</span>`; }).join("")}</div></section>`:""}
@@ -512,7 +515,7 @@ function blankCoin(){ return {country:"Australia",priceCur:"AUD",qty:1,status:"I
 function datalists(){ const vals=k=>[...new Set(S.coins.map(c=>c[k]).concat(S.wanted.map(w=>w[k])).filter(v=>!blank(v)))].sort();
   return ["series","effigy","reverseDesigner","source","storage","country","composition","edge"].map(k=>`<datalist id="dl_${k}">${vals(k).map(v=>`<option value="${esc(v)}">`).join("")}</datalist>`).join("")+`<datalist id="dl_mint">${MINTS.map(m=>`<option value="${m}">`).join("")}</datalist>`; }
 function pick(field,opts,cur,labels,scroll){ return `<div class="pick ${scroll?"scroll":""}" role="group">${opts.map((o,i)=>`<button type="button" data-pk="${field}" data-pv="${esc(o)}" aria-pressed="${String(cur)===String(o)}">${esc(labels?labels[i]:o)}</button>`).join("")}</div>`; }
-function inp(field,label,draft,o={}){ return `<div class="field ${o.full?"full":""}"><label for="f_${field}">${esc(label)}${o.hint?` <span class="hint">${esc(o.hint)}</span>`:""}</label>${o.area?`<textarea id="f_${field}" data-f="${field}" placeholder="${esc(o.ph||"")}">${esc(draft[field]||"")}</textarea>`:`<input id="f_${field}" data-f="${field}" value="${esc(draft[field]??"")}" ${o.list?`list="dl_${o.list}"`:""} ${o.num?`inputmode="${o.num}"`:""} ${o.type?`type="${o.type}"`:""} placeholder="${esc(o.ph||"")}" autocomplete="off">`}</div>`; }
+function inp(field,label,draft,o={}){ return `<div class="field ${o.full?"full":""}"><label for="f_${field}">${esc(label)}${o.info?" "+infoBtn(o.info):""}${o.hint?` <span class="hint">${esc(o.hint)}</span>`:""}</label>${o.area?`<textarea id="f_${field}" data-f="${field}" placeholder="${esc(o.ph||"")}">${esc(draft[field]||"")}</textarea>`:`<input id="f_${field}" data-f="${field}" value="${esc(draft[field]??"")}" ${o.list?`list="dl_${o.list}"`:""} ${o.num?`inputmode="${o.num}"`:""} ${o.type?`type="${o.type}"`:""} placeholder="${esc(o.ph||"")}" autocomplete="off">`}</div>`; }
 function editHTML(d){
   const c=d.draft, isNew=!d.id, specN=["composition","mass","diameter","thickness","edge","mintage"].filter(k=>!blank(c[k])).length, desN=["effigy","reverseDesigner","variety"].filter(k=>!blank(c[k])).length;
   return `<div class="shead"><div class="wrap">${backBtn("Cancel")}<h2>${isNew?"New coin":"Edit coin"}</h2><button type="button" class="btn sm amber" data-save>Save</button></div></div>
@@ -520,7 +523,7 @@ function editHTML(d){
   ${c.ns?`<div class="nsbar" style="margin:0"><span>Linked to Numista · N# ${esc(c.ns.id)}. Check the details and add your own below.</span>${nsKey()?`<button type="button" class="btn sm" data-nsfind="edit">Change</button>`:""}</div>`:nsKey()?`<div class="nsbar" style="margin:0"><span>Not linked to Numista yet — find it to fill in specs, designers, mintage and reference photos.</span><button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsfind="edit">Find in Numista</button></div>`:""}
   <section class="fsec"><h3><span class="ico" style="background:#4338CA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="8"/></svg></span>The coin</h3>
     <div class="field"><span class="flabel">Denomination</span>${pick("denom",DENOMS.map(d=>d.k),c.denom,null,true)}</div>
-    <div class="grid2">${inp("year","Year",c,{num:"numeric",ph:"e.g. 2022"})}${inp("mint","Mint / privy mark",c,{list:"mint",ph:"C, S, None…"})}</div>
+    <div class="grid2">${inp("year","Year",c,{num:"numeric",ph:"e.g. 2022"})}${inp("mint","Mint / privy mark",c,{list:"mint",ph:"C, S, None…",info:"marks"})}</div>
     ${inp("series","Theme / series",c,{list:"series",ph:"e.g. Australian Dinosaurs",hint:"groups coins into albums"})}
     ${inp("title","Name",c,{ph:autoTitle(c)||"e.g. 2022 $2 Honey Bee",hint:"leave blank to use year, value and series"})}
     <div class="field"><span class="flabel">Coloured coin?</span>${pick("colourised",["yes","no"],c.colourised===true?"yes":c.colourised===false?"no":"",["Coloured","Not coloured"])}</div>
@@ -528,10 +531,10 @@ function editHTML(d){
     <div class="grid2" id="setFields" ${c.isSet?"":"hidden"}>${inp("setCount","Coins in set",c,{num:"numeric"})}<div></div>${inp("setContents","What's in the set",c,{area:true,full:true,ph:"One coin per line"})}</div>
   </section>
   <section class="fsec"><h3><span class="ico" style="background:#2563EB"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 18h16M7 14l3-4 3 3 4-6"/></svg></span>Condition</h3>
-    <div class="field"><span class="flabel">Grade</span>${pick("grade",GRADES,c.grade)}</div>
+    <div class="field"><span class="flabel">Grade ${infoBtn("grades")}</span>${pick("grade",GRADES,c.grade)}<span class="hint" id="gradeHint">${c.grade?esc(GRADE_HINTS[c.grade]||""):"Not sure? Tap ? for what each grade looks like."}</span></div>
     <div class="grid2">${inp("sheldon","Sheldon number",c,{num:"numeric",ph:"1–70, optional"})}${inp("serial","Serial / certificate no.",c,{ph:"if it has one"})}</div>
-    <div class="field"><span class="flabel">Finish</span>${pick("finish",FINISHES,c.finish)}</div>
-    <div class="field"><span class="flabel">Packaging</span>${pick("packaging",PACKS,c.packaging)}</div>
+    <div class="field"><span class="flabel">Finish ${infoBtn("finish")}</span>${pick("finish",FINISHES,c.finish)}</div>
+    <div class="field"><span class="flabel">Packaging ${infoBtn("packaging")}</span>${pick("packaging",PACKS,c.packaging)}</div>
   </section>
   <section class="fsec"><h3><span class="ico" style="background:#D97706"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16v12H4z"/><path d="M4 11h16"/></svg></span>Ownership</h3>
     <div class="field"><span class="flabel">How you got it</span>${pick("acqHow",HOWS,c.acqHow)}</div>
@@ -662,6 +665,85 @@ function tlistHTML(d){
   <p class="m0 muted small">Year and mint list from Numista. Tap a gap to put it on your want list.</p></div>`;
 }
 
+/* ================= built-in collector's guide ================= */
+const GUIDE=[
+ {id:"grades",title:"Grades at a glance",color:"#2563EB",icon:'<path d="M4 18h16M7 14l3-4 3 3 4-6"/>',html:`
+  <p>A grade describes <b>how much wear</b> a coin has. Australia mostly uses the word grades below; the Sheldon numbers (1–70) are the US scale used by grading services like PCGS and NGC, and many Australian dealers quote both.</p>
+  <table class="gt"><thead><tr><th>Grade</th><th>Sheldon</th><th>What you see</th></tr></thead><tbody>
+  <tr><td><b>G</b> Good</td><td>4–6</td><td>Heavily worn. Design mostly flat and seen in outline; rims mostly full; date readable.</td></tr>
+  <tr><td><b>VG</b> Very Good</td><td>8–10</td><td>Most central detail worn flat, but rims are full and the main design is clear.</td></tr>
+  <tr><td><b>F</b> Fine</td><td>12–15</td><td>About half the fine detail worn away; lettering still sharp.</td></tr>
+  <tr><td><b>VF</b> Very Fine</td><td>20–35</td><td>Light to moderate wear across the coin; all major features clear.</td></tr>
+  <tr><td><b>EF</b> Extremely Fine</td><td>40–45</td><td>All design visible; only the highest points show light wear. Some lustre may remain.</td></tr>
+  <tr><td><b>aUNC</b> About Unc.</td><td>50–58</td><td>Just a trace of wear or rub on the very highest points; most lustre still there.</td></tr>
+  <tr><td><b>UNC</b> Uncirculated</td><td>60–70</td><td>No wear at all. May still have bag marks or a weak strike — higher numbers mean fewer marks and better lustre.</td></tr>
+  <tr><td><b>BU</b> Brilliant Unc.</td><td>—</td><td>Uncirculated with full, original mint lustre. A description rather than a number.</td></tr>
+  </tbody></table>
+  <p class="muted small">"a" in front of a grade means "about" — e.g. aEF is almost Extremely Fine. "Choice" and "Gem" are used for the better uncirculated coins.</p>`},
+ {id:"howto",title:"How to grade a coin",color:"#0D9488",icon:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',html:`
+  <ol><li>Hold the coin by its edges under a <b>single light</b> and tilt it slowly. Wear shows as a dull patch where the lustre breaks.</li>
+  <li>Look at the <b>highest points</b> of the design first (cheek, hair, crown, animal's shoulder) — they wear before anything else.</li>
+  <li>Tell <b>wear</b> (flattened detail) apart from <b>damage</b> (scratches, dents, rim knocks, cleaning marks). Damage doesn't change the grade number, but note it — it lowers the value.</li>
+  <li>Grade <b>both sides</b> and use the lower one.</li>
+  <li>If you're unsure between two grades, choose the lower. You can add a Sheldon number later if you want more precision.</li></ol>
+  <p><b>Pre-decimal tip:</b> on George V pennies collectors judge wear by the King's crown band. "8 pearls, full centre diamond" is a common shorthand for EF.</p>
+  <p class="muted small">Proof isn't a grade — it's how the coin was made. Record it under Finish, and grade it as normal (most proofs are UNC).</p>`},
+ {id:"sheldon",title:"Sheldon numbers in detail",color:"#4338CA",icon:'<path d="M5 6h14M5 12h14M5 18h9"/>',html:`
+  <table class="gt"><tbody>
+  <tr><td>PO-1</td><td>Poor — type, date and mint mark just identifiable</td></tr><tr><td>FR-2</td><td>Fair — worn flat, traces of rim lettering</td></tr>
+  <tr><td>AG-3</td><td>About Good — rims worn into lettering</td></tr><tr><td>G-4 / G-6</td><td>Good — rims mostly full; design flat, seen in outline</td></tr>
+  <tr><td>VG-8 / 10</td><td>Very Good — most central detail worn flat, rims full</td></tr><tr><td>F-12 / 15</td><td>Fine — about half the detail worn; lettering sharp</td></tr>
+  <tr><td>VF-20 – 35</td><td>Very Fine — moderate to light wear; major detail clear</td></tr><tr><td>EF-40 / 45</td><td>Extremely Fine — high points flat or lightly worn; some lustre</td></tr>
+  <tr><td>AU-50 – 58</td><td>About Uncirculated — trace of wear; from some to nearly full lustre</td></tr>
+  <tr><td>MS-60 – 62</td><td>Mint State — no wear; weaker strike, many marks</td></tr><tr><td>MS-63 / 64</td><td>No wear; average strike, moderate to scattered marks</td></tr>
+  <tr><td>MS-65 / 66</td><td>Gem — above-average strike, only minor marks</td></tr><tr><td>MS-67 – 69</td><td>Superb — tiny flaws, barely visible</td></tr><tr><td>MS-70</td><td>Perfect — no marks visible</td></tr>
+  </tbody></table><p class="muted small">Proofs use the same numbers with PR or PF in front (e.g. PR-69). Source: PCGS grading standards.</p>`},
+ {id:"finish",title:"Finishes: circulating, UNC, proof",color:"#7C3AED",icon:'<circle cx="12" cy="12" r="8"/><path d="M8 12h8"/>',html:`
+  <dl class="gd"><dt>Circulating</dt><dd>Made for everyday change. Includes coloured "coin-in-card" circulating releases like the Indigenous Military Service $2.</dd>
+  <dt>Uncirculated (UNC)</dt><dd>Struck for collectors on normal dies and sold straight into a card, pack or set — never handled as change.</dd>
+  <dt>Frosted uncirculated</dt><dd>Uncirculated with a frosted (matte) design standing out against the background.</dd>
+  <dt>Proof</dt><dd>Struck more than once with specially polished dies and blanks, giving a mirror background and sharp frosted design. Handle only in its capsule.</dd>
+  <dt>Specimen</dt><dd>A finish between uncirculated and proof — better than normal UNC, but not mirror-like.</dd></dl>`},
+ {id:"marks",title:"Mint marks, privy marks & counterstamps",color:"#D97706",icon:'<path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/>',html:`
+  <p><b>Decimal coins (Royal Australian Mint)</b> — each marked version is collected as a separate coin:</p>
+  <dl class="gd"><dt>Mintmark</dt><dd>A raised letter on the coin's background. Early ones were <b>C</b> (Canberra), <b>M</b> (Melbourne) and <b>S</b> (Sydney), struck at the Mint or on mobile presses at the Melbourne and Sydney Royal Easter Shows.</dd>
+  <dt>Counterstamp</dt><dd>A raised letter or symbol inside a <b>sunken circle</b> (e.g. B, M, S) — used from 2002, plus one-offs for special events.</dd>
+  <dt>Privy mark</dt><dd>A letter or symbol <b>sunk into a raised square</b>, e.g. [M], [S], [P] — used from 2008.</dd>
+  <dt>No mint mark</dt><dd>Most everyday circulating coins have none. Record "None" so it's clear you checked.</dd></dl>
+  <p><b>Pre-decimal coins</b> often show where they were struck:</p>
+  <dl class="gd"><dt>M</dt><dd>Melbourne (on silver coins from 1916).</dd><dt>D / S</dt><dd>Denver and San Francisco — wartime silver coins struck in the USA.</dd>
+  <dt>I</dt><dd>Bombay — below the King's head on wartime halfpennies.</dd><dt>PL</dt><dd>The 1951 "PL" penny, struck in London.</dd>
+  <dt>Dots</dt><dd>Small dots near the date, scroll or denomination identify Melbourne, Sydney, Perth or Bombay strikes on some pennies and halfpennies.</dd></dl>
+  <p class="muted small">Sources: Numista forum (brismike), NGC.</p>`},
+ {id:"packaging",title:"Packaging & storage words",color:"#DB2777",icon:'<path d="M4 8l8-4 8 4v10l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v10"/>',html:`
+  <dl class="gd"><dt>Card / coin-in-card</dt><dd>The coin sealed in a printed card. Keep it in the card — removing it usually lowers the value.</dd>
+  <dt>RAM card</dt><dd>A card issued by the Royal Australian Mint itself.</dd><dt>DCPL card</dt><dd>A card issued by Downies (Downies Collectables) rather than the Mint.</dd>
+  <dt>Set / folder</dt><dd>Several coins sold together, e.g. a 4-coin privy mark set or the 7-coin AC/DC set. Record it as one item with "This is a set" ticked.</dd>
+  <dt>Capsule</dt><dd>A clear round plastic case — best for proofs and valuable coins.</dd><dt>Flip</dt><dd>A folded plastic sleeve. Avoid old soft PVC flips — they can leave green residue over time.</dd>
+  <dt>2x2 holder</dt><dd>A cardboard square with a clear window, stapled shut.</dd><dt>Slab</dt><dd>A sealed hard-plastic holder from a grading service, with a label and certificate number.</dd>
+  <dt>PNC</dt><dd>Philatelic Numismatic Cover — an envelope with stamps and a coin. If you have one, choose "Other" packaging and note it.</dd></dl>`},
+ {id:"care",title:"Caring for your coins",color:"#15803D",icon:'<path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',html:`
+  <ul><li><b>Never clean a coin.</b> Even gentle polishing leaves hairline scratches and can halve its value.</li>
+  <li>Hold coins <b>by the edges</b>, over a soft surface. Skin oils leave fingerprints that can etch in.</li>
+  <li>Keep them <b>cool, dry and dark</b>. Damp causes spots; sunlight fades coloured coins and cards.</li>
+  <li>Use <b>archival, PVC-free</b> holders, capsules and albums.</li>
+  <li>Leave carded and boxed coins <b>in their original packaging</b>, with any certificate.</li>
+  <li>Record where each coin is kept (Storage location) — it makes insurance claims and finding coins much easier.</li></ul>`},
+ {id:"glossary",title:"Glossary",color:"#475569",icon:'<path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/>',html:`
+  <dl class="gd"><dt>Obverse</dt><dd>The "heads" side — the monarch's portrait.</dd><dt>Reverse</dt><dd>The "tails" side — the design.</dd>
+  <dt>Effigy</dt><dd>The monarch's portrait, named by its designer (e.g. Jody Clark, 2019–2023).</dd><dt>Legend</dt><dd>The lettering around the coin.</dd>
+  <dt>Field</dt><dd>The flat background around the design.</dd><dt>Rim</dt><dd>The raised border.</dd>
+  <dt>Edge</dt><dd>The side of the coin — reeded (milled), plain or interrupted.</dd><dt>Mintage</dt><dd>How many were made. Lower mintage usually means scarcer.</dd>
+  <dt>NCLT</dt><dd>Non-circulating legal tender — made for collectors, not for change.</dd><dt>Noodling</dt><dd>Searching change, rolls or bags for keepers.</dd>
+  <dt>Lustre</dt><dd>The original "cartwheel" shine from striking. Once rubbed off, it never returns.</dd><dt>Toning</dt><dd>Natural colour that develops on metal over time.</dd>
+  <dt>Strike</dt><dd>How fully the design was pressed into the coin.</dd><dt>Variety</dt><dd>A recognised difference in a die (e.g. a doubled design).</dd>
+  <dt>Error</dt><dd>A minting mistake — off-centre, wrong planchet, mule (mismatched sides).</dd><dt>Key date</dt><dd>A scarce year that a series collection is hard to complete without.</dd></dl>`}
+];
+function guideBody(open){ return GUIDE.map(g=>`<details class="fsec gsec" id="g_${g.id}" ${open===g.id?"open":""}><summary><span class="ico" style="background:${g.color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${g.icon}</svg></span>${esc(g.title)}<span class="sp"></span></summary><div class="gtext">${g.html}</div></details>`).join(""); }
+function viewGuide(){ return `<section class="view">${backMore}<div class="hero" style="padding-top:12px;margin-top:0;border-radius:18px;margin-left:0;margin-right:0"><h1 style="color:#fff;font-size:22px">Collector's guide</h1><p class="m0" style="color:var(--on-indigo);font-size:13px">Grades, finishes, mint marks and coin care — always available, even offline.</p></div>${guideBody(S.guideOpen||"grades")}</section>`; }
+function guideHTML(d){ return `<div class="shead"><div class="wrap">${backBtn("Back")}<h2>Guide</h2></div></div><div class="wrap sbody">${guideBody(d.open)}</div>`; }
+const infoBtn=id=>`<button type="button" class="infob" data-guide="${id}" aria-label="What does this mean?">?</button>`;
+
 /* ================= Numista settings screen ================= */
 function viewNumista(){ const s=nsSet();
   return `<section class="view">${backMore}<div class="panel"><h3>Numista lookups</h3>
@@ -679,6 +761,7 @@ document.addEventListener("click",async e=>{
   const b=e.target.closest("button,a[data-dlbk],img[data-zoom]"); if(!b) return; const d=b.dataset;
   if("zoom" in d){ const el=document.createElement("div"); el.id="zoom"; el.innerHTML=`<img src="${b.src}" alt=""><button type="button" class="btn">Close</button>`; document.body.appendChild(el); return; }
   if("back" in d){ await popView(); return; }
+  if(d.guide){ e.preventDefault(); if(topV()&&topV().kind==="edit") readForm(); openView({kind:"guide",open:d.guide}); return; }
   if(d.tab){ S.tab=d.tab; if(d.tab==="more") S.moreView=null; render(); scrollTo(0,0); return; }
   if("add" in d){ if(S.readOnly){ toast(RO_MSG); return; } openView({kind:"add"}); return; }
   if(d.open){ openView({kind:"detail",id:d.open}); return; }
@@ -718,6 +801,7 @@ document.addEventListener("click",async e=>{
     b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed","false"));
     if(on){ v=""; } else b.setAttribute("aria-pressed","true");
     if(d.pk==="colourised") c.colourised=v==="yes"?true:v==="no"?false:null; else c[d.pk]=v;
+    if(d.pk==="grade"){ const h=$("#gradeHint"); if(h) h.textContent=c.grade?GRADE_HINTS[c.grade]||"":"Not sure? Tap ? for what each grade looks like."; }
     if(d.pk==="denom"){ const ti=$("#f_title"); if(ti){ readForm(); ti.placeholder=autoTitle(c)||"e.g. 2022 $2 Honey Bee"; } if(!c.collection){} }
     return; }
   if(d.qty){ const i=$("#f_qty"); i.value=Math.max(1,(parseInt(i.value,10)||1)+(+d.qty)); return; }

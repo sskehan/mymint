@@ -1,7 +1,7 @@
 /* MyMint — core: on-phone storage, money, Dropbox live copy, snapshots, backup & restore.
    The storage and Dropbox parts follow the same design as MyMaglites. */
 "use strict";
-const APP_ID="mymint", APP_NAME="MyMint", APP_VERSION="1.04", BACKUP_VERSION=1;
+const APP_ID="mymint", APP_NAME="MyMint", APP_VERSION="1.05", BACKUP_VERSION=1;
 
 /* ================= storage (IndexedDB, on this device) ================= */
 const STORES=["coins","wanted","settings","files","meta","outbox"];
