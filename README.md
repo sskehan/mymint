@@ -1,10 +1,10 @@
-# MyMint — coin collection app (version 1.05)
+# MyMint — coin collection app (version 1.06)
 
 Runs on your phone with no Claude and no account. Your coins and photos are stored on the
 phone itself, with a live copy in your own Dropbox once connected. Same setup as MyMaglites.
 
 ## Files in this folder
-index.html · core.js · app.js · sw.js · manifest.webmanifest · jszip.min.js ·
+index.html · core.js · app.js · sw.js · manifest.webmanifest · jszip.min.js · jspdf.umd.min.js ·
 icon-192.png · icon-512.png · icon-maskable-512.png · README.md
 
 ## 1. Put the app online (once) — GitHub Pages
@@ -38,5 +38,5 @@ Then tap the **To finish** chip to work through the details each one still needs
 The key stays in the app and its backups only — never in the public GitHub files.
 
 ## Changing the app later
-Upload the changed files, and in `sw.js` change `const VERSION = "mm-1.05"` to the new version
+Upload the changed files, and in `sw.js` change `const VERSION = "mm-1.06"` to the new version
 (e.g. `"mm-1.01"`). That tells phones to pick up the update. Your data is not affected.

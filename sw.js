@@ -1,6 +1,6 @@
 // MyMint — offline support. Bump VERSION when you change any app file.
-const VERSION = "mm-1.05";
-const SHELL = ["./", "index.html", "core.js", "app.js", "jszip.min.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
+const VERSION = "mm-1.06";
+const SHELL = ["./", "index.html", "core.js", "app.js", "jszip.min.js", "jspdf.umd.min.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION && k !== "mm-fonts").map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
