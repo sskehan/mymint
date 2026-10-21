@@ -567,17 +567,17 @@ function editHTML(d){
   </section>
   <section class="fsec"><h3><span class="ico" style="background:#2563EB"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 18h16M7 14l3-4 3 3 4-6"/></svg></span>Condition</h3>
     <div class="field"><span class="flabel">Grade ${infoBtn("grades")}</span>${pick("grade",GRADES,c.grade)}<span class="hint" id="gradeHint">${c.grade?esc(GRADE_HINTS[c.grade]||""):"Not sure? Tap ? for what each grade looks like."}</span></div>
-    <div class="grid2">${inp("sheldon","Sheldon number",c,{num:"numeric",ph:"1–70, optional"})}${inp("serial","Serial / certificate no.",c,{ph:"if it has one"})}</div>
+    <div class="grid2">${inp("sheldon","Sheldon no.",c,{num:"numeric",ph:"1–70, optional"})}${inp("serial","Serial / cert. no.",c,{ph:"if it has one"})}</div>
     <div class="field"><span class="flabel">Finish ${infoBtn("finish")}</span>${pick("finish",FINISHES,c.finish)}</div>
     <div class="field"><span class="flabel">Packaging ${infoBtn("packaging")}</span>${pick("packaging",PACKS,c.packaging)}</div>
   </section>
   <section class="fsec"><h3><span class="ico" style="background:#D97706"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16v12H4z"/><path d="M4 11h16"/></svg></span>Ownership</h3>
     <div class="field"><span class="flabel">How you got it</span>${pick("acqHow",HOWS,c.acqHow)}</div>
-    <div class="row" style="align-items:flex-end;gap:16px"><div class="field"><span class="flabel">Quantity</span><div class="stepper"><button type="button" data-qty="-1" aria-label="One fewer">−</button><input id="f_qty" data-f="qty" inputmode="numeric" value="${esc(c.qty||1)}" aria-label="Quantity"><button type="button" data-qty="1" aria-label="One more">+</button></div></div>
-      <div class="field" style="flex:1">${`<label for="f_acqDate">Date acquired</label><input id="f_acqDate" data-f="acqDate" type="date" value="${esc(c.acqDate||"")}">`}</div></div>
+    <div class="grid2"><div class="field"><span class="flabel">Quantity</span><div class="stepper"><button type="button" data-qty="-1" aria-label="One fewer">−</button><input id="f_qty" data-f="qty" inputmode="numeric" value="${esc(c.qty||1)}" aria-label="Quantity"><button type="button" data-qty="1" aria-label="One more">+</button></div></div>
+      <div class="field">${`<label for="f_acqDate">Date acquired</label><input id="f_acqDate" data-f="acqDate" type="date" value="${esc(c.acqDate||"")}">`}</div></div>
     ${inp("source","Source",c,{list:"source",ph:"e.g. Royal Australian Mint, coin fair, change"})}
     <div class="field"><label for="f_price">Price paid (each)</label><div class="inrow"><input id="f_price" data-f="price" inputmode="decimal" value="${esc(c.price??"")}" placeholder="0.00" style="flex:1"><select id="f_priceCur" data-f="priceCur" style="width:96px" aria-label="Currency">${CURRENCIES.map(x=>`<option ${curOf(c.priceCur)===x?"selected":""}>${x}</option>`).join("")}</select></div><span class="hint" id="audNote">${curOf(c.priceCur)!=="AUD"?(c.priceAud!=null&&c.priceAud!==""?`About ${aud(c.priceAud)} — converted at the rate on the purchase date`:"Converted to AUD when you save (needs internet)"):""}</span></div>
-    <div class="grid2">${inp("value","Current value (each, A$)",c,{num:"decimal",ph:"your estimate"})}<div class="field"><label for="f_valueDate">Value as at</label><input id="f_valueDate" data-f="valueDate" type="date" value="${esc(c.valueDate||"")}"></div></div>
+    <div class="grid2">${inp("value","Value each (A$)",c,{num:"decimal",ph:"your estimate"})}<div class="field"><label for="f_valueDate">Value as at</label><input id="f_valueDate" data-f="valueDate" type="date" value="${esc(c.valueDate||"")}"></div></div>
     ${inp("storage","Storage location",c,{list:"storage",ph:"e.g. Safe, Album 1 page 3, Red box"})}
     ${isNew?"":`<div class="field"><span class="flabel">Status</span>${pick("status",STATUSES,c.status||"In collection")}</div>`}
   </section>
