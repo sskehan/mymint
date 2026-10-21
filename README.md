@@ -1,4 +1,4 @@
-# MyMint — coin collection app (version 1.0)
+# MyMint — coin collection app (version 1.01)
 
 Runs on your phone with no Claude and no account. Your coins and photos are stored on the
 phone itself, with a live copy in your own Dropbox once connected. Same setup as MyMaglites.
@@ -30,7 +30,7 @@ Then tap the **To finish** chip to work through the details each one still needs
 3. **Settings** tab: under **OAuth 2 → Redirect URIs** add exactly `https://sskehan.github.io/mymint/`
 4. Copy the **App key** (not the secret).
 5. In MyMint: **More → Backup & restore** → paste the App key → **Connect Dropbox**.
-   (Send me the App key and I'll build it into the next version, like your other apps.)
+   (From version 1.01 your App key is built in — just tap **Connect Dropbox**.)
 
 ## 5. Numista lookups (fills in details for you)
 1. Sign in at **en.numista.com**, open **en.numista.com/api**, choose the **Free plan**.

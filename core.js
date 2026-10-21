@@ -1,7 +1,7 @@
 /* MyMint — core: on-phone storage, money, Dropbox live copy, snapshots, backup & restore.
    The storage and Dropbox parts follow the same design as MyMaglites. */
 "use strict";
-const APP_ID="mymint", APP_NAME="MyMint", APP_VERSION="1.0", BACKUP_VERSION=1;
+const APP_ID="mymint", APP_NAME="MyMint", APP_VERSION="1.01", BACKUP_VERSION=1;
 
 /* ================= storage (IndexedDB, on this device) ================= */
 const STORES=["coins","wanted","settings","files","meta","outbox"];
@@ -120,7 +120,7 @@ async function doRestore(){
      live/coins/<id>.json, live/files/<id>.<ext>, live/files.json (photo index), live/wanted.json, live/settings.json
      snapshots/*.zip      daily full backups (and one before every restore)
      deleted/…            anything deleted or replaced on the phone, moved here instead of erased      */
-const DBX_APP_KEY=""; // Dropbox App key for the MyMint app folder (not a secret). Empty = paste it in the app once.
+const DBX_APP_KEY="o386ym9hmi3jn7t"; // Dropbox App key for the MyMint app folder (not a secret; the App secret is never used)
 const PROMPT_EVERY=10, SYNC_DELAY=3000, VERIFY_DAYS=7, SNAP_DAILY_DAYS=30, SNAP_MONTHS=24;
 const DBX_TOKEN="https://api.dropboxapi.com/oauth2/token";
 const RO_MSG="This device has been replaced as the main one — view only. Use More › Backup & restore to make it the main device again.";
@@ -172,14 +172,23 @@ async function dbxFinish(){
   if(p.has("error")){ render(); toast("Dropbox not connected: "+(p.get("error_description")||p.get("error")).replace(/\+/g," ")); return; }
   if(!dx.pkce||p.get("state")!==dx.pkce.state){ render(); toast("That Dropbox sign-in didn't match — tap Connect Dropbox again"); return; }
   try{
-    const r=await fetch(DBX_TOKEN,{method:"POST",body:new URLSearchParams({grant_type:"authorization_code",code:p.get("code"),client_id:dx.appKey,code_verifier:dx.pkce.v,redirect_uri:dbxRedirect()})});
-    const j=await r.json().catch(()=>({})); if(!r.ok||!j.refresh_token) throw new Error(j.error_description||j.error||("HTTP "+r.status));
+    let r,j;
+    for(let i=0;i<4;i++){ // Dropbox sometimes says "rate limited" while it sets up a new app folder: wait and try again
+      r=await fetch(DBX_TOKEN,{method:"POST",body:new URLSearchParams({grant_type:"authorization_code",code:p.get("code"),client_id:dx.appKey,code_verifier:dx.pkce.v,redirect_uri:dbxRedirect()})});
+      j=await r.json().catch(()=>({}));
+      if(r.ok&&j.refresh_token) break;
+      const busy=r.status===429||r.status>=500||/rate.?limit|too_many|concurrency/i.test(String(j.error_description||j.error||""));
+      if(!busy||i===3) break;
+      toast("Dropbox is busy setting up your folder — retrying…"); await new Promise(z=>setTimeout(z,(i+1)*4000));
+    }
+    if(!r.ok||!j.refresh_token) throw new Error(shortErr(j.error_description||j.error||("HTTP "+r.status)));
     S.meta.dbx={appKey:dx.appKey,refresh:j.refresh_token,access:j.access_token,expires:Date.now()+(j.expires_in||14400)*1000,wifiOnly:dx.wifiOnly!==false};
     await saveMeta();
     try{ const a=await dbxApi("users/get_current_account",null); await setDbx({email:a.email,name:a.name&&a.name.display_name}); }catch{}
   }catch(e){ await setDbx({pkce:null,lastError:"Dropbox sign-in failed: "+(e.message||e)}); render(); return; }
   await afterConnect();
 }
+function shortErr(m){ m=String(m||""); if(/rate.?limit|too_many|concurrency/i.test(m)) return "Dropbox was busy setting up your app folder. Wait a minute, then tap Connect Dropbox again."; m=m.split(/ORIGINAL STACK|\n/)[0].trim(); return m.length>160?m.slice(0,157)+"…":m; }
 async function afterConnect(){
   render();
   let man; try{ man=await dbxReadJSON("/live/manifest.json"); }catch(e){ toast("Connected, but Dropbox couldn't be read: "+e.message); return; }
@@ -197,7 +206,7 @@ async function dbxToken(force){
   const dx=S.meta.dbx; if(!force&&dx.access&&dx.expires>Date.now()+60000) return dx.access;
   const r=await fetch(DBX_TOKEN,{method:"POST",body:new URLSearchParams({grant_type:"refresh_token",refresh_token:dx.refresh,client_id:dx.appKey})});
   const j=await r.json().catch(()=>({}));
-  if(!r.ok){ if(j.error==="invalid_grant"){ await setDbx({refresh:null,access:null,lastError:"Dropbox access was removed or expired — connect Dropbox again"}); } throw new Error(j.error_description||j.error||("HTTP "+r.status)); }
+  if(!r.ok){ if(j.error==="invalid_grant"){ await setDbx({refresh:null,access:null,lastError:"Dropbox access was removed or expired — connect Dropbox again"}); } throw new Error(shortErr(j.error_description||j.error||("HTTP "+r.status))); }
   await setDbx({access:j.access_token,expires:Date.now()+(j.expires_in||14400)*1000}); return j.access_token;
 }
 class DbxErr extends Error{ constructor(m,status,summary){ super(m); this.status=status; this.summary=summary||""; } }
@@ -240,7 +249,7 @@ async function syncNow(opts={}){
     S.meta.changes=await outboxCount(); if(!S.meta.changes&&!S.meta.needFull) S.meta.lastBackup=new Date().toISOString();
     S.meta.lastSync=new Date().toISOString(); await setDbx({lastError:null,lastErrorAt:null}); ok=true;
   }catch(e){
-    const msg=!navigator.onLine||e instanceof TypeError?"couldn't reach Dropbox (no connection?)":String(e&&e.message||e);
+    const msg=!navigator.onLine||e instanceof TypeError?"couldn't reach Dropbox (no connection?)":shortErr(e&&e.message||e);
     await setDbx({lastError:msg,lastErrorAt:new Date().toISOString()}).catch(()=>{});
     if(opts.manual) toast("Dropbox sync failed: "+msg);
     if(dbxOn()) scheduleSync(60000);
