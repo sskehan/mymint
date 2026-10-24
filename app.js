@@ -73,7 +73,7 @@ function gradeText(c){ return c.grade?(c.grade+(c.sheldon?"-"+c.sheldon:"")):"";
 function gradeStyle(g){ g=String(g||""); if(/UNC|BU/.test(g)) return "background:#DCFCE7;color:#166534"; if(/^EF/.test(g)) return "background:#DBEAFE;color:#1E40AF"; if(/^VF/.test(g)) return "background:#FEF3C7;color:#92400E"; return "background:#E5E7EB;color:#374151"; }
 function gradePill(c){ const g=gradeText(c); if(g) return `<span class="grade" style="${gradeStyle(c.grade)}">${esc(g)}</span>`; if(c.finish==="Proof") return `<span class="grade" style="background:#F3E8FF;color:#6B21A8">Proof</span>`; return ""; }
 const mine=c=>(c.photos||[]).filter(p=>p.mine);
-function coverOf(c){ const ph=c.photos||[]; return ph.find(p=>p.id===c.coverId)||ph.find(p=>p.mine&&p.side==="Obverse")||ph.find(p=>p.mine)||ph.find(p=>p.side==="Obverse")||ph[0]||null; }
+function coverOf(c){ const ph=c.photos||[]; return ph.find(p=>p.id===c.coverId)||ph.find(p=>p.mine&&p.side==="Reverse")||ph.find(p=>p.mine)||ph.find(p=>p.side==="Reverse")||ph[0]||null; }
 function todoOf(c){ const t=[]; if(blank(c.year)) t.push("year"); if(!c.grade&&c.finish!=="Proof") t.push("grade"); if(!mine(c).length) t.push("your photos"); if(blank(c.storage)) t.push("storage location"); if(c.acqHow==="Bought"&&blank(c.price)) t.push("price paid"); return t; }
 function imgTag(p,attrs){ return p.url?`<img src="${esc(p.url)}" alt="" referrerpolicy="no-referrer" onerror="this.style.opacity=0" ${attrs||""}>`:`<img data-fid="${esc(p.id)}" alt="" ${attrs||""}>`; }
 function drawnCoin(c){ const d=dInfo(c.denom); return `<div class="coin m-${d.metal} ${d.shape||""}">${esc(c.denom?d.face:"?")}</div>`; }
@@ -243,7 +243,7 @@ function units(){ const out=[]; for(const c of S.coins.filter(isOwned)){ const i
     if(items.length){ for(const it of items) out.push({open:c.id,coin:c,item:it,ns:it.ns,year:it.year||c.year,mint:it.mint||"",denom:it.denom||c.denom,series:c.series||it.series||"",title:it.title||titleOf(c)}); }
     else out.push({open:c.id,coin:c,ns:c.ns,year:c.year,mint:c.mint||"",denom:c.denom,series:c.series||"",title:titleOf(c)}); }
   return out; }
-function unitFace(u,size){ const st=`style="--face:${size}px;width:${size}px;height:${size}px"`; if(!u.item) return faceHTML(u.coin).replace('class="face"',`class="face" ${st}`); const p=(u.item.photos||[]).find(p=>p.side==="Obverse")||(u.item.photos||[])[0]; return `<div class="face" ${st}>${p?imgTag(p):drawnCoin({denom:u.denom})}</div>`; }
+function unitFace(u,size){ const st=`style="--face:${size}px;width:${size}px;height:${size}px"`; if(!u.item) return faceHTML(u.coin).replace('class="face"',`class="face" ${st}`); const p=(u.item.photos||[]).find(p=>p.side==="Reverse")||(u.item.photos||[])[0]; return `<div class="face" ${st}>${p?imgTag(p):drawnCoin({denom:u.denom})}</div>`; }
 const unitYear=u=>{ const m=String(u.year||"").match(/\d{4}/); return m?+m[0]:null; };
 const unitTheme=u=>GROUPS[u.denom?dInfo(u.denom).grp:"other"];
 function albumData(){
@@ -449,7 +449,7 @@ const shortSrc=s=>({"Royal Australian Mint":"RAM","Perth Mint":"Perth"}[s]||s||"
 function nsSearchBlock(d){ return `<form id="nsForm" class="searchbar" style="border:2px solid #4338CA"><label class="sr" for="nsq">Search Numista</label><input id="nsq" type="search" enterkeyhint="search" autocomplete="off" placeholder="e.g. 2022 2 dollars honey bee" value="${esc(d.q||"")}"><button class="btn sm primary" type="submit">Search</button></form>
       <label class="check-inline"><input type="checkbox" id="nsAus" ${nsSet().ausOnly!==false?"checked":""}><span>Australian coins only</span></label>
       ${d.busy?`<p class="muted m0">${esc(d.busy)}</p>`:""}${d.err?`<p class="warnTxt m0">${esc(d.err)}</p>`:""}${d.tried&&!d.busy&&!d.issues?`<p class="muted small m0">No exact match — showing results for "${esc(d.tried)}".</p>`:""}
-      ${d.issues?issuePicker(d):d.results?(d.results.length?`<div class="listbox">${d.results.map(r=>`<button type="button" class="nsres" data-nspick="${r.id}">${r.obverse_thumbnail?`<img src="${esc(r.obverse_thumbnail)}" alt="" referrerpolicy="no-referrer">`:`<span class="face" style="--face:48px;width:48px;height:48px"><span class="coin m-silver">?</span></span>`}<span class="tx"><b>${esc(r.title)}</b><span>${esc([r.issuer&&r.issuer.name,r.min_year===r.max_year?r.min_year:`${r.min_year||"?"}–${r.max_year||"?"}`,"N# "+r.id].filter(Boolean).join(" · "))}</span></span></button>`).join("")}<p class="m0 muted small" style="padding:8px 14px">Source: Numista</p></div>`:`<p class="muted m0">Nothing found — try fewer words, e.g. "2 dollars 2022".</p>`):`<p class="muted small m0">Tip: type the year, value and a word from the design. Picking a match fills in the specifications and reference photos.</p>`}`
+      ${d.issues?issuePicker(d):d.results?(d.results.length?`<div class="listbox">${d.results.map(r=>`<button type="button" class="nsres" data-nspick="${r.id}">${(r.reverse_thumbnail||r.obverse_thumbnail)?`<img src="${esc(r.reverse_thumbnail||r.obverse_thumbnail)}" alt="" referrerpolicy="no-referrer">`:`<span class="face" style="--face:48px;width:48px;height:48px"><span class="coin m-silver">?</span></span>`}<span class="tx"><b>${esc(r.title)}</b><span>${esc([r.issuer&&r.issuer.name,r.min_year===r.max_year?r.min_year:`${r.min_year||"?"}–${r.max_year||"?"}`,"N# "+r.id].filter(Boolean).join(" · "))}</span></span></button>`).join("")}<p class="m0 muted small" style="padding:8px 14px">Source: Numista</p></div>`:`<p class="muted m0">Nothing found — try fewer words, e.g. "2 dollars 2022".</p>`):`<p class="muted small m0">Tip: type the year, value and a word from the design. Picking a match fills in the specifications and reference photos.</p>`}`
 ; }
 const NS_SETUP=`<div class="panel"><p class="m0">Add your free Numista API key and MyMint fills in composition, mass, diameter, mintage, designers and reference photos for you.</p><button type="button" class="btn primary" data-more-go="numista">Set up Numista</button></div>`;
 function addHTML(d){
@@ -591,7 +591,7 @@ function photosSec(d){
   const c=d.draft, ph=c.photos||[], cv=coverOf(c);
   return `<h3><span class="ico" style="background:#15803D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>Photos<span class="sp" style="flex:1"></span><span class="muted small">${ph.length}</span></h3>
   <div class="row"><button type="button" class="btn primary" data-cam><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Take photo</button><button type="button" class="btn" data-pickph>Choose from phone</button></div>
-  <p class="m0 muted small">New photos are labelled <b style="color:var(--mine)">MY COIN</b> and take turns as obverse, reverse, then card. Switch a mint or catalogue picture to <b>Reference</b> and say where it's from.</p>
+  <p class="m0 muted small">New photos are labelled <b style="color:var(--mine)">MY COIN</b> and take turns as obverse, reverse, then card. The reverse (design side) shows on the coin list unless you pick another cover. Switch a mint or catalogue picture to <b>Reference</b> and say where it's from.</p>
   ${ph.map((p,i)=>`<div class="phedit ${p.mine?"mine":"ref"}">${imgTag(p,'class="pimg"')}<div class="pc">
     <div class="whose" role="group" aria-label="Whose photo"><button type="button" data-whose="${i}:mine" class="${p.mine?"on-mine":""}" aria-pressed="${!!p.mine}">My coin</button><button type="button" data-whose="${i}:ref" class="${p.mine?"":"on-ref"}" aria-pressed="${!p.mine}">Reference</button></div>
     <select data-pside="${i}" aria-label="Side">${SIDES.map(s=>`<option ${p.side===s?"selected":""}>${s}</option>`).join("")}</select>
@@ -609,7 +609,6 @@ async function addPhotoFiles(files){
   const d=topV(); if(!d||d.kind!=="edit") return; readForm(); const c=d.draft; let n=0;
   toast(files.length>1?`Adding ${files.length} photos…`:"Adding photo…");
   for(const f of files){ try{ const blob=await resizeImage(f,1600); const id=uid("f"); await dbPut("files",{id,blob,type:"image/jpeg",name:id+".jpg"}); d.newFiles.push(id); c.photos.push({id,mine:true,side:nextSide(c)}); n++; }catch(e){ toast("A photo couldn't be read: "+(e.message||e)); } }
-  if(!c.coverId){ const cv=c.photos.find(p=>p.mine&&p.side==="Obverse")||c.photos.find(p=>p.mine); if(cv) c.coverId=cv.id; }
   drawPhotos(); if(n) toast(n===1?"Photo added":`${n} photos added`);
 }
 function clean(c){
@@ -708,7 +707,7 @@ async function dropUnused(ids){ for(const id of new Set(ids)) if(id&&!fileInUse(
 /* ================= sets: the coins inside a set ================= */
 const pickKeys=(o,ks)=>{ const r={}; for(const k of ks) if(!blank(o[k])) r[k]=o[k]; return r; };
 function itemSub(it){ return [it.denom,it.year,it.mint&&it.mint!=="None"?"Mint "+it.mint:"",it.mintage?"Mintage "+fmtNum(it.mintage):""].filter(Boolean).join(" · "); }
-function itemFace(it,size,rev){ size=size||44; const ph=it.photos||[]; const p=(rev&&ph.find(p=>p.side==="Reverse"))||ph.find(p=>p.side==="Obverse")||ph[0]; return `<div class="face" style="--face:${size}px;width:${size}px;height:${size}px">${p?imgTag(p):drawnCoin({denom:it.denom})}</div>`; }
+function itemFace(it,size,rev){ size=size||44; const ph=it.photos||[]; const p=ph.find(p=>p.side==="Reverse")||ph.find(p=>p.side==="Obverse")||ph[0]; return `<div class="face" style="--face:${size}px;width:${size}px;height:${size}px">${p?imgTag(p):drawnCoin({denom:it.denom})}</div>`; }
 function setSec(d){ const c=d.draft, items=c.setItems||[];
   return `<div class="setin"><div class="flabel" style="display:flex;align-items:center;gap:8px">Coins in this set<span class="muted small" style="font-weight:600">${items.length?items.length+" listed":""}</span></div>
   ${items.length?`<div class="sitems">${items.map((it,i)=>`<div class="sitem">${itemFace(it,44,true)}<span class="tx"><b>${esc(it.title||"Coin "+(i+1))}</b><span>${esc(itemSub(it)||"Added by hand")}</span></span><button type="button" class="btn sm ghost" data-sirm="${i}" aria-label="Remove ${esc(it.title||"coin")}">×</button></div>`).join("")}</div>`:`<p class="m0 muted small">Add each coin in the set — from Numista for its details and reference photos, or by hand.</p>`}
