@@ -153,7 +153,7 @@ function backupBanner(){
 }
 function viewCoins(){
   const v=view(), owned=S.coins.filter(isOwned), nCoins=owned.reduce((a,c)=>a+coinsIn(c),0);
-  const val=owned.reduce((a,c)=>a+(blank(c.value)?0:+c.value*qtyOf(c)),0), paid=owned.reduce((a,c)=>{ const p=priceAUD(c); return a+(p==null?0:p*qtyOf(c)); },0);
+  const val=owned.reduce((a,c)=>a+(blank(c.value)?0:+c.value*qtyOf(c)),0), paid=owned.reduce((a,c)=>{ const p=costEach(c); return a+(p==null?0:p*qtyOf(c)); },0);
   const wants=S.wanted.filter(w=>!w.got).length;
   if(!S.coins.length) return `<section class="view"><div class="hero"><div class="stats"><div class="stat"><b>0</b><span>Coins</span></div><div class="stat"><b>—</b><span>Value</span></div><div class="stat"><b>${wants}</b><span>Wanted</span></div></div></div>${backupBanner()}
     <div class="empty"><b>No coins on this ${devWord()} yet</b><span>${dbxOn()?"Connected to Dropbox, but there's no collection there yet.":"New phone, or cleared Chrome? Connect Dropbox and your collection downloads automatically. To load your starter list, restore the backup file you were given."}</span>
@@ -166,7 +166,7 @@ function viewCoins(){
   <div class="hero">
     <div class="stats">
       <button type="button" class="stat" data-more-go="stats"><b style="color:#4338CA">${nCoins}</b><span>Coins</span></button>
-      <button type="button" class="stat" data-more-go="stats"><b style="color:#0F766E">${val?aud(Math.round(val)):paid?aud(Math.round(paid)):"—"}</b><span>${val?"Current value":"Paid"}</span></button>
+      <button type="button" class="stat" data-more-go="stats"><b style="color:#0F766E">${val?aud(Math.round(val)):paid?aud(Math.round(paid)):"—"}</b><span>${val?"Current value":"Total cost"}</span></button>
       <button type="button" class="stat" data-tab="wants"><b style="color:#C2410C">${wants}</b><span>Wanted</span></button>
     </div>
     <div class="searchbar"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4B5563" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -200,10 +200,16 @@ function resultsHTML(){
 }
 function tileHTML(c){ const t=themeOf(c), p=coverOf(c);
   return `<button type="button" class="tile" style="background:${t.tint}" data-open="${c.id}">${faceHTML(c)}${p&&!p.mine?`<span class="reftag">REF</span>`:""}${qtyOf(c)>1?`<span class="qty">×${qtyOf(c)}</span>`:""}
-    <span class="yr" style="color:${t.text}">${esc(c.year||"—")}</span><span class="nm">${esc(shortName(c))}</span>${c.isSet?`<span class="setb">Set of ${setSize(c)}</span>`:""}${gradePill(c)}</button>`; }
+    <span class="yr" style="color:${t.text}">${esc(c.year||"—")}</span>${(n=>`<span class="nm"><b>${esc(n.main)}</b>${n.sub?`<small>${esc(n.sub)}</small>`:""}</span>`)(nameParts(c))}${c.isSet?`<span class="setb">Set of ${setSize(c)}</span>`:""}${gradePill(c)}</button>`; }
+/* Numista titles read "2 Dollars - Elizabeth II (4th portrait - Australian Olympic Team)": lead with the subject, keep the rest underneath */
+function nameParts(c){ const t=titleOf(c); const yr=String(c.year||"").replace(/[^\d]/g,""); const noYr=s=>(yr?s.replace(new RegExp("^"+yr+"\\s+"),""):s)||s;
+  const m=t.match(/^(.*?)\s+-\s+([^()]+?)\s*\((.+)\)\s*$/);
+  if(m){ const subj=m[3].split(/\s+-\s+|;\s*/).map(x=>x.trim()).filter(x=>x&&!/portrait$/i.test(x)).join(" · ");
+    if(subj) return {main:subj,sub:[m[1].trim(),m[2].trim()].join(" · ")}; }
+  return {main:noYr(t),sub:""}; }
 function shortName(c){ const t=titleOf(c); let s=t.replace(new RegExp("^"+String(c.year||"").replace(/[^\d]/g,"")+"\\s*"),""); return s||t; }
 function rowHTML(c){ const p=coverOf(c), t=themeOf(c);
-  return `<button type="button" class="lrow" data-open="${c.id}">${faceHTML(c)}<span class="tx"><span class="t1">${esc(titleOf(c))}</span><span class="t2">${esc([c.denom,c.mint&&c.mint!=="None"?"Mint "+c.mint:"",c.packaging,c.storage].filter(Boolean).join(" · ")||"Tap to add details")}</span></span>
+  return `<button type="button" class="lrow" data-open="${c.id}">${faceHTML(c)}<span class="tx"><span class="t1">${esc(nameParts(c).main)}</span><span class="t2">${esc([nameParts(c).sub||c.denom,c.mint&&c.mint!=="None"?"Mint "+c.mint:"",c.packaging,c.storage].filter(Boolean).join(" · ")||"Tap to add details")}</span></span>
     <span class="rt">${c.isSet?`<span class="setb">Set of ${setSize(c)}</span>`:""}${gradePill(c)}${qtyOf(c)>1?`<span>×${qtyOf(c)}</span>`:""}${p&&!p.mine?`<span style="color:var(--ref);font-size:10px;font-weight:800">REF PHOTO</span>`:""}<i style="width:8px;height:8px;border-radius:4px;background:${t.solid}"></i></span></button>`; }
 
 /* ---------- albums ---------- */
@@ -280,24 +286,25 @@ function viewBackup(){
 }
 function viewStats(){
   const owned=S.coins.filter(isOwned); const n=owned.reduce((a,c)=>a+coinsIn(c),0);
-  const paid=owned.reduce((a,c)=>{ const p=priceAUD(c); return a+(p==null?0:p*qtyOf(c)); },0);
+  const coinsPaid=owned.reduce((a,c)=>{ const p=priceAUD(c); return a+(p==null?0:p*qtyOf(c)); },0), postPaid=owned.reduce((a,c)=>a+(priceAUD(c)==null?0:postageTotal(c)),0), paid=coinsPaid+postPaid;
   const val=owned.reduce((a,c)=>a+(blank(c.value)?0:+c.value*qtyOf(c)),0);
-  const both=owned.filter(c=>!blank(c.value)&&priceAUD(c)!=null); const bp=both.reduce((a,c)=>a+priceAUD(c)*qtyOf(c),0), bv=both.reduce((a,c)=>a+(+c.value)*qtyOf(c),0);
+  const both=owned.filter(c=>!blank(c.value)&&costEach(c)!=null); const bp=both.reduce((a,c)=>a+costEach(c)*qtyOf(c),0), bv=both.reduce((a,c)=>a+(+c.value)*qtyOf(c),0);
   const by={}; for(const c of owned){ const g=grpOf(c); by[g]=(by[g]||0)+qtyOf(c); }
   const bars=(entries,colorFn)=>{ const max=Math.max(1,...entries.map(e=>e[1])); return `<div class="bars">${entries.map(([k,v])=>`<div class="bar"><span>${esc(k)}</span><div class="track"><div class="fill" style="width:${v/max*100}%;background:${colorFn(k)}"></div></div><span class="v">${v}</span></div>`).join("")}</div>`; };
   const ser={}; for(const c of owned) if(c.series) ser[c.series]=(ser[c.series]||0)+coinsIn(c);
   const sto={}; for(const c of owned) sto[c.storage||"Not recorded"]=(sto[c.storage||"Not recorded"]||0)+coinsIn(c);
   const todo=owned.filter(c=>todoOf(c).length).length;
   return `<section class="view">${backMore}
-  <div class="stats"><div class="stat"><b style="color:#4338CA">${n}</b><span>Coins (${owned.length} records)</span></div><div class="stat"><b style="color:#0F766E">${val?aud(Math.round(val)):"—"}</b><span>Current value</span></div><div class="stat"><b style="color:#B45309">${paid?aud(Math.round(paid)):"—"}</b><span>Paid</span></div></div>
-  ${both.length?`<div class="panel"><h3>Gain on coins with both a price and a value</h3><p class="m0"><b style="font-size:22px;color:${bv>=bp?"#15803D":"#B91C1C"}">${bv>=bp?"+":"−"}${aud(Math.abs(Math.round(bv-bp)))}</b> <span class="muted">across ${both.length} record${both.length===1?"":"s"} (paid ${aud(Math.round(bp))}, now ${aud(Math.round(bv))})</span></p></div>`:""}
+  <div class="stats"><div class="stat"><b style="color:#4338CA">${n}</b><span>Coins (${owned.length} records)</span></div><div class="stat"><b style="color:#0F766E">${val?aud(Math.round(val)):"—"}</b><span>Current value</span></div><div class="stat"><b style="color:#B45309">${paid?aud(Math.round(paid)):"—"}</b><span>Total cost</span></div></div>
+  ${postPaid?`<p class="m0 muted small">Total cost = coins ${esc(aud(Math.round(coinsPaid)))} + postage &amp; fees ${esc(aud(Math.round(postPaid)))}.</p>`:""}
+  ${both.length?`<div class="panel"><h3>Gain against total cost (price + postage)</h3><p class="m0"><b style="font-size:22px;color:${bv>=bp?"#15803D":"#B91C1C"}">${bv>=bp?"+":"−"}${aud(Math.abs(Math.round(bv-bp)))}</b> <span class="muted">across ${both.length} record${both.length===1?"":"s"} (cost ${aud(Math.round(bp))}, now ${aud(Math.round(bv))})</span></p></div>`:""}
   ${denomPanel(owned)}
   ${Object.keys(ser).length?`<div class="panel"><h3>By series</h3>${bars(Object.entries(ser).sort((a,b)=>b[1]-a[1]).slice(0,12),()=>"#4338CA")}</div>`:""}
   <div class="panel"><h3>Where they're kept</h3>${bars(Object.entries(sto).sort((a,b)=>b[1]-a[1]),k=>k==="Not recorded"?"#A5ABB8":"#7C3AED")}</div>
   ${todo?`<div class="todo"><span>${todo} record${todo===1?"":"s"} still need details (year, grade, photos or storage).</span><button type="button" class="btn sm" data-showtodo>Show them</button></div>`:""}
   </section>`;
 }
-const CSV_COLS=[["title",titleOf],["denomination",c=>c.denom],["year"],["mintMark",c=>c.mint],["series"],["country"],["collection",collOf],["colourised",c=>c.colourised===true?"Yes":c.colourised===false?"No":""],["isSet",c=>c.isSet?"Yes":""],["coinsInSet",c=>c.isSet?setSize(c):""],["setContents",c=>(c.setItems||[]).map(it=>[it.year,it.title].filter(Boolean).join(" ")).join("; ")||c.setContents],["grade"],["sheldon"],["finish"],["packaging"],["serial"],["quantity",qtyOf],["howAcquired",c=>c.acqHow],["dateAcquired",c=>c.acqDate],["source"],["priceEach",c=>c.price],["priceCurrency",c=>curOf(c.priceCur)],["priceEachAUD",c=>priceAUD(c)],["valueEachAUD",c=>c.value],["valueDate"],["storage"],["status",c=>c.status||"In collection"],["composition"],["massG",c=>c.mass],["diameterMm",c=>c.diameter],["thicknessMm",c=>c.thickness],["edge"],["mintage"],["effigy"],["reverseDesigner"],["variety"],["numistaId",c=>c.ns&&c.ns.id],["catalogueRefs",c=>c.ns&&c.ns.refs],["myPhotos",c=>mine(c).length],["referencePhotos",c=>(c.photos||[]).filter(p=>!p.mine).length],["receipts",c=>(c.receiptIds||[]).length||""],["historicalContext",c=>c.history],["notes"]];
+const CSV_COLS=[["title",titleOf],["denomination",c=>c.denom],["year"],["mintMark",c=>c.mint],["series"],["country"],["collection",collOf],["colourised",c=>c.colourised===true?"Yes":c.colourised===false?"No":""],["isSet",c=>c.isSet?"Yes":""],["coinsInSet",c=>c.isSet?setSize(c):""],["setContents",c=>(c.setItems||[]).map(it=>[it.year,it.title].filter(Boolean).join(" ")).join("; ")||c.setContents],["grade"],["sheldon"],["finish"],["packaging"],["serial"],["quantity",qtyOf],["howAcquired",c=>c.acqHow],["dateAcquired",c=>c.acqDate],["source"],["priceEach",c=>c.price],["priceCurrency",c=>curOf(c.priceCur)],["priceEachAUD",c=>priceAUD(c)],["postageEachAUD",c=>{ const p=postageEach(c); return p?Math.round(p*100)/100:""; }],["totalCostEachAUD",c=>costEach(c)],["valueEachAUD",c=>c.value],["valueDate"],["storage"],["status",c=>c.status||"In collection"],["composition"],["massG",c=>c.mass],["diameterMm",c=>c.diameter],["thicknessMm",c=>c.thickness],["edge"],["mintage"],["effigy"],["reverseDesigner"],["variety"],["numistaId",c=>c.ns&&c.ns.id],["catalogueRefs",c=>c.ns&&c.ns.refs],["myPhotos",c=>mine(c).length],["referencePhotos",c=>(c.photos||[]).filter(p=>!p.mine).length],["receipts",c=>(c.receiptIds||[]).length||""],["historicalContext",c=>c.history],["notes"]];
 function toCSV(){ const q=v=>{ v=v==null?"":String(v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }; return "﻿"+[CSV_COLS.map(c=>c[0]).join(","),...S.coins.map(c=>CSV_COLS.map(([k,fn])=>q(fn?fn(c):c[k])).join(","))].join("\r\n"); }
 function viewExport(){ const url=URL.createObjectURL(new Blob([toCSV()],{type:"text/csv"})); return `<section class="view">${backMore}<div class="panel"><h3>Export CSV</h3><p class="m0">${S.coins.length} coins, ${CSV_COLS.length} columns. Opens in Excel. This is a spreadsheet copy, not a backup — photos aren't included and it can't be restored.</p><div class="row"><a class="btn primary" href="${url}" download="mymint-coins-${todayISO()}.csv">Save CSV</a><button type="button" class="btn" data-copycsv>Copy CSV text</button></div><textarea class="csv" id="csvText" readonly aria-label="CSV text">${esc(toCSV().slice(1))}</textarea></div></section>`; }
 window.addEventListener("afterprint",()=>{ const el=$("#report"); if(el) el.innerHTML=""; });
@@ -410,7 +417,7 @@ function detailHTML(d){
     ${cardH("Design","#DB2777",'<path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/>',kv("Effigy",c.effigy)+kv("Reverse designer",c.reverseDesigner)+(c.colourised!=null?kv("Colourised",c.colourised?"Yes":"No"):""))}
     ${cardH("Condition","#2563EB",'<path d="M4 18h16M7 14l3-4 3 3 4-6"/>',kvH("Grade",gradeText(c)?`<span class="grade" style="${gradeStyle(c.grade)}">${esc(gradeText(c))}${GRADE_NAMES[c.grade]?" · "+esc(GRADE_NAMES[c.grade]):""}</span> ${infoBtn("grades")}`:"")+kv("Finish",c.finish)+kv("Packaging",c.packaging)+kv("Serial / certificate no.",c.serial))}
     ${cardH("Specifications","#0D9488",'<path d="M12 3v18M3 12h18"/>',kv("Composition",c.composition)+kv("Mass",unit(c.mass,"g"))+kv("Diameter",unit(c.diameter,"mm"))+kv("Thickness",unit(c.thickness,"mm"))+kv("Edge",c.edge)+kvH("Mintage",blank(c.mintage)?"":`${esc(fmtNum(c.mintage))}${+c.mintage&&+c.mintage<=50000?` <span class="grade" style="background:#FEF3C7;color:#92400E">Low mintage</span>`:""}`)+(!ns&&!c.isSet&&nsKey()&&!S.readOnly?`<div class="nsbar"><span>Not linked to Numista yet</span><button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsfind="${c.id}">Find in Numista</button></div>`:"")+(ns?`<div class="nsbar"><span>Catalogue data provided by Numista · <a href="${esc(ns.url)}" target="_blank" rel="noopener">N# ${esc(ns.id)}</a>${ns.refs?" · "+esc(ns.refs):""}</span>${nsKey()&&!S.readOnly?`<button type="button" class="btn sm" style="background:#0D9488;border-color:#0D9488;color:#fff" data-nsrefresh="${c.id}">Refresh</button>`:""}</div>`:""))}
-    ${cardH("Ownership","#D97706",'<path d="M4 7h16v12H4z"/><path d="M4 11h16"/>',kv("Quantity",qtyOf(c)>1?String(qtyOf(c)):"")+kv("How acquired",c.acqHow)+kv("Date acquired",fmtDate(c.acqDate))+kv("Source",c.source)+kv("Price paid (each)",blank(c.price)?"":(curOf(c.priceCur)==="AUD"?aud(c.price):`${fmtMoney(c.price,c.priceCur)}${pa!=null?" ("+aud(pa)+")":" (AUD pending)"}`))+kvH("Current value (each)",blank(c.value)?"":`${esc(aud(c.value))}${pa!=null&&+c.value!==pa?` <span class="grade" style="${+c.value>=pa?"background:#DCFCE7;color:#166534":"background:#FEE2E2;color:#991B1B"}">${+c.value>=pa?"+":"−"}${esc(aud(Math.abs(+c.value-pa)))}</span>`:""}${c.valueDate?`<br><span class="muted small">as at ${esc(fmtDate(c.valueDate))}</span>`:""}`)+kv("Status",isOwned(c)?"":c.status))}
+    ${cardH("Ownership","#D97706",'<path d="M4 7h16v12H4z"/><path d="M4 11h16"/>',kv("Quantity",qtyOf(c)>1?String(qtyOf(c)):"")+kv("How acquired",c.acqHow)+kv("Date acquired",fmtDate(c.acqDate))+kv("Source",c.source)+kv("Price paid (each)",blank(c.price)?"":(curOf(c.priceCur)==="AUD"?aud(c.price):`${fmtMoney(c.price,c.priceCur)}${pa!=null?" ("+aud(pa)+")":" (AUD pending)"}`))+(postageEach(c)>0?kv("Postage share (each)",aud(Math.round(postageEach(c)*100)/100))+(costEach(c)!=null?kvH("Total cost (each)",`<b>${esc(aud(costEach(c)))}</b>`):""):"")+kvH("Current value (each)",blank(c.value)?"":`${esc(aud(c.value))}${gainPill(c)}${c.valueDate?`<br><span class="muted small">as at ${esc(fmtDate(c.valueDate))}</span>`:""}`)+kv("Status",isOwned(c)?"":c.status))}
     ${setCard(c)}${rcCard(c)}
     ${issues?`<section class="card"><h3><span class="ico" style="background:#0F766E"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></span>All years of this type<span class="sp"></span><span class="muted small">${issues.filter(i=>ownsIssue(ns.id,i)).length}/${issues.length}</span></h3><div class="chips wrapy" style="padding-bottom:14px">${issues.map(i=>{ const o=ownsIssue(ns.id,i); return `<span class="chip" style="${o?"background:#DDF5F2;border-color:#0D9488;color:#115E59":""}">${o?"✓ ":""}${esc(i.year)}${i.mint?" "+esc(i.mint):""}${i.mintage?` <span class="muted" style="font-weight:600">· ${esc(fmtNum(i.mintage))}</span>`:""}</span>`; }).join("")}</div></section>`:""}
     ${c.history?`<section class="card"><h3><span class="ico" style="background:#7C3AED"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg></span>Historical context</h3><p class="story">${esc(c.history)}</p></section>`:""}
@@ -543,7 +550,7 @@ function editHTML(d){
     <div class="field"><span class="flabel">Quantity</span><div class="stepper"><button type="button" data-qty="-1" aria-label="One fewer">−</button><input id="f_qty" data-f="qty" inputmode="numeric" value="${esc(c.qty||1)}" aria-label="Quantity"><button type="button" data-qty="1" aria-label="One more">+</button></div></div>
     <div class="field"><label for="f_acqDate">Date acquired</label><input id="f_acqDate" data-f="acqDate" type="date" value="${esc(c.acqDate||"")}"></div>
     ${inp("source","Source",c,{list:"source",ph:"e.g. Royal Australian Mint, coin fair, change"})}
-    <div class="field"><label for="f_price">Price paid (each)</label><div class="inrow"><input id="f_price" data-f="price" inputmode="decimal" value="${esc(c.price??"")}" placeholder="0.00" style="flex:1"><select id="f_priceCur" data-f="priceCur" style="width:96px" aria-label="Currency">${CURRENCIES.map(x=>`<option ${curOf(c.priceCur)===x?"selected":""}>${x}</option>`).join("")}</select></div><span class="hint" id="audNote">${curOf(c.priceCur)!=="AUD"?(c.priceAud!=null&&c.priceAud!==""?`About ${aud(c.priceAud)} — converted at the rate on the purchase date`:"Converted to AUD when you save (needs internet)"):""}</span></div>
+    <div class="field"><label for="f_price">Price paid (each)</label><div class="inrow"><input id="f_price" data-f="price" inputmode="decimal" value="${esc(c.price??"")}" placeholder="0.00" style="flex:1"><select id="f_priceCur" data-f="priceCur" style="width:96px" aria-label="Currency">${CURRENCIES.map(x=>`<option ${curOf(c.priceCur)===x?"selected":""}>${x}</option>`).join("")}</select></div>${d.id&&postageEach(S.coins.find(x=>x.id===d.id)||{})>0?`<span class="hint">Plus ${esc(aud(Math.round(postageEach(S.coins.find(x=>x.id===d.id))*100)/100))} postage each from the receipt — counted in total cost.</span>`:""}<span class="hint" id="audNote">${curOf(c.priceCur)!=="AUD"?(c.priceAud!=null&&c.priceAud!==""?`About ${aud(c.priceAud)} — converted at the rate on the purchase date`:"Converted to AUD when you save (needs internet)"):""}</span></div>
     ${inp("value","Current value each (A$)",c,{num:"decimal",ph:"your estimate"})}<div class="field"><label for="f_valueDate">Value as at</label><input id="f_valueDate" data-f="valueDate" type="date" value="${esc(c.valueDate||"")}"></div>
     ${inp("storage","Storage location",c,{list:"storage",ph:"e.g. Safe, Album 1 page 3, Red box"})}
     ${isNew?"":`<div class="field"><span class="flabel">Status</span>${pick("status",STATUSES,c.status||"In collection")}</div>`}
@@ -599,6 +606,7 @@ function clean(c){
   if(c.setItems) c.setCount=String(c.setItems.length);
   if(c.packaging===PACK_OTHER) delete c.packaging;
   if(c.receiptIds){ c.receiptIds=[...new Set(c.receiptIds)]; if(!c.receiptIds.length) delete c.receiptIds; }
+  if(c.receiptCover){ for(const k of Object.keys(c.receiptCover)) if(!(c.receiptIds||[]).includes(k)||+c.receiptCover[k]>=c.qty) delete c.receiptCover[k]; if(!Object.keys(c.receiptCover).length) delete c.receiptCover; }
   if(curOf(c.priceCur)==="AUD"){ delete c.priceAud; delete c.priceRate; }
   for(const k of Object.keys(c)) if(c[k]===""||c[k]==null) delete c[k];
   return c;
@@ -615,7 +623,7 @@ async function saveCoin(){
   if(pendingConv(c)||(prev&&(prev.price!==c.price||prev.priceCur!==c.priceCur||prev.acqDate!==c.acqDate)&&curOf(c.priceCur)!=="AUD")){ delete c.priceAud; try{ await convertCoin(c); }catch{} }
   c.id=d.id||uid("c"); c.addedAt=c.addedAt||new Date().toISOString(); c.updatedAt=new Date().toISOString();
   if(c.photos&&c.coverId&&!c.photos.some(p=>p.id===c.coverId)) delete c.coverId;
-  for(const r of (d.newReceipts||[])) if((c.receiptIds||[]).includes(r.id)){ const {fromPhoto,...rec}=r; for(const k of ["seller","orderNo","notes"]) if(typeof rec[k]==="string") rec[k]=rec[k].trim(); if(!blank(rec.total)){ const n=Number(String(rec.total).replace(/[$,\s]/g,"")); rec.total=isNaN(n)?null:n; } for(const k of Object.keys(rec)) if(rec[k]===""||rec[k]==null) delete rec[k]; rec.updatedAt=new Date().toISOString(); await dbPut("receipts",rec); }
+  for(const r of (d.newReceipts||[])) if((c.receiptIds||[]).includes(r.id)){ const {fromPhoto,...rec}=r; for(const k of ["seller","orderNo","notes"]) if(typeof rec[k]==="string") rec[k]=rec[k].trim(); for(const k of ["total","postage"]) if(!blank(rec[k])){ const n=Number(String(rec[k]).replace(/[$,\s]/g,"")); rec[k]=isNaN(n)?null:n; } for(const k of Object.keys(rec)) if(rec[k]===""||rec[k]==null) delete rec[k]; rec.updatedAt=new Date().toISOString(); await dbPut("receipts",rec); }
   await dbPut("coins",c); d.saved=true;
   const maybeUnused=[...(d.removedFiles||[]),...filesOf(prev),...(d.newFiles||[])];
   if(d.fromWant){ const w=S.wanted.find(x=>x.id===d.fromWant); if(w){ await dbPut("wanted",{...w,got:true,gotAt:new Date().toISOString(),coinId:c.id}); } }
@@ -730,7 +738,7 @@ function denomPanel(owned){
 /* ================= receipts & documents ================= */
 const isPdf=r=>/pdf/i.test((r&&r.type)||"");
 function rcThumb(r){ return isPdf(r)?`<span class="rcthumb rcpdf" aria-label="PDF">PDF</span>`:`<span class="rcthumb"><img data-fid="${esc(r.fileId)}" alt=""></span>`; }
-function rcSummary(r){ return [r.date?fmtDate(r.date):"",r.seller,!blank(r.total)?aud(r.total):""].filter(Boolean).join(" · ")||"Receipt (no details yet)"; }
+function rcSummary(r){ return [r.date?fmtDate(r.date):"",r.seller,!blank(r.total)?aud(r.total)+(+r.postage?" incl. "+aud(r.postage)+" postage":""):""].filter(Boolean).join(" · ")||"Receipt (no details yet)"; }
 const rcCoins=id=>S.coins.filter(c=>(c.receiptIds||[]).includes(id));
 const rcAll=()=>S.receipts.slice().sort((a,b)=>String(b.date||(b.addedAt||"").slice(0,10)).localeCompare(String(a.date||(a.addedAt||"").slice(0,10))));
 function rcFind(id){ const t=topV(); return S.receipts.find(r=>r.id===id)||((t&&t.newReceipts)||[]).find(r=>r.id===id)||null; }
@@ -739,7 +747,7 @@ async function storeReceiptFile(file){
   if(pdf){ if(file.size>20*1048576) throw new Error("That PDF is over 20 MB — too big to keep."); const id=uid("f"); await dbPut("files",{id,blob:file,type:"application/pdf",name:file.name||id+".pdf"}); return {fileId:id,type:"application/pdf",name:file.name||""}; }
   const blob=await resizeImage(file,2200); const id=uid("f"); await dbPut("files",{id,blob,type:"image/jpeg",name:id+".jpg"}); return {fileId:id,type:"image/jpeg",name:file.name||""};
 }
-function rcNewFields(r){ return `<div class="rcfields"><div class="field"><label for="rd_${r.id}">Receipt date</label><input type="date" id="rd_${r.id}" data-rnf="date" data-rid="${r.id}" value="${esc(r.date||"")}"></div><div class="field"><label for="rs_${r.id}">Seller</label><input id="rs_${r.id}" data-rnf="seller" data-rid="${r.id}" list="dl_source" autocomplete="off" value="${esc(r.seller||"")}" placeholder="e.g. Royal Australian Mint"></div><div class="grid2"><div class="field"><label for="rt_${r.id}">Total (A$)</label><input id="rt_${r.id}" data-rnf="total" data-rid="${r.id}" inputmode="decimal" value="${esc(r.total??"")}" placeholder="optional"></div><div class="field"><label for="ro_${r.id}">Order no.</label><input id="ro_${r.id}" data-rnf="orderNo" data-rid="${r.id}" autocomplete="off" value="${esc(r.orderNo||"")}" placeholder="optional"></div></div></div>`; }
+function rcNewFields(r){ return `<div class="rcfields"><div class="field"><label for="rd_${r.id}">Receipt date</label><input type="date" id="rd_${r.id}" data-rnf="date" data-rid="${r.id}" value="${esc(r.date||"")}"></div><div class="field"><label for="rs_${r.id}">Seller</label><input id="rs_${r.id}" data-rnf="seller" data-rid="${r.id}" list="dl_source" autocomplete="off" value="${esc(r.seller||"")}" placeholder="e.g. Royal Australian Mint"></div><div class="grid2"><div class="field"><label for="rt_${r.id}">Receipt total (A$)</label><input id="rt_${r.id}" data-rnf="total" data-rid="${r.id}" inputmode="decimal" value="${esc(r.total??"")}" placeholder="whole amount"></div><div class="field"><label for="rp_${r.id}">Postage &amp; fees</label><input id="rp_${r.id}" data-rnf="postage" data-rid="${r.id}" inputmode="decimal" value="${esc(r.postage??"")}" placeholder="0"></div></div><div class="field"><label for="ro_${r.id}">Order / invoice no.</label><input id="ro_${r.id}" data-rnf="orderNo" data-rid="${r.id}" autocomplete="off" value="${esc(r.orderNo||"")}" placeholder="optional"></div></div>`; }
 function rcSec(d){ const c=d.draft; const list=(c.receiptIds||[]).map(rcFind).filter(Boolean);
   return `<h3><span class="ico" style="background:#0F766E"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></span>Receipts &amp; documents<span class="sp" style="flex:1"></span><span class="muted small">${list.length||""}</span></h3>
   <div class="row"><button type="button" class="btn primary" data-rcnew>New receipt</button>${S.receipts.some(r=>!(c.receiptIds||[]).includes(r.id))?`<button type="button" class="btn" data-rcuse>Use an existing receipt</button>`:""}</div>
@@ -763,7 +771,7 @@ function linkRows(d,list){ return list.map(c=>`<label class="ckrow"><input type=
 function linkList(d){ return sorted(S.coins.filter(c=>matchQuery(c,d.lq||"")).slice()); }
 function receiptHTML(d){
   const r=S.receipts.find(x=>x.id===d.id); if(!r) return `<div class="shead"><div class="wrap">${backBtn("Back")}<h2>Receipt</h2></div></div><div class="wrap sbody"><div class="empty"><b>This receipt was deleted</b></div></div>`;
-  const coins=rcCoins(r.id); const units=coins.reduce((a,c)=>a+qtyOf(c),0); const each=!blank(r.total)&&units?Math.round(+r.total/units*100)/100:null; const noPrice=coins.filter(c=>blank(c.price)).length;
+  const coins=rcCoins(r.id);
   return `<div class="shead"><div class="wrap">${backBtn("Back")}<h2>Receipt</h2></div></div>
   <div class="wrap sbody">${datalists()}
     <section class="card" style="padding:14px">${isPdf(r)?`<div class="stage ref" style="flex-direction:column;gap:10px"><span class="rcthumb rcpdf" style="width:84px;height:104px;font-size:20px">PDF</span><span class="muted small">${esc(r.name||"PDF document")}</span></div>`:`<div class="stage ref"><img data-fid="${esc(r.fileId)}" alt="Receipt" data-zoom></div>`}
@@ -771,14 +779,16 @@ function receiptHTML(d){
     <section class="fsec"><h3>Details</h3>
       <div class="field"><label for="rv_date">Receipt date</label><input type="date" id="rv_date" value="${esc(r.date||"")}"></div>
       <div class="field"><label for="rv_seller">Seller</label><input id="rv_seller" list="dl_source" autocomplete="off" value="${esc(r.seller||"")}"></div>
-      <div class="grid2"><div class="field"><label for="rv_total">Total (A$)</label><input id="rv_total" inputmode="decimal" value="${esc(r.total??"")}"></div><div class="field"><label for="rv_order">Order no.</label><input id="rv_order" autocomplete="off" value="${esc(r.orderNo||"")}"></div></div>
+      <div class="grid2"><div class="field"><label for="rv_total">Receipt total (A$)</label><input id="rv_total" inputmode="decimal" value="${esc(r.total??"")}"></div><div class="field"><label for="rv_post">Postage &amp; fees (A$)</label><input id="rv_post" inputmode="decimal" value="${esc(r.postage??"")}" placeholder="0"></div></div>
+      <p class="m0 muted small" style="margin-top:-4px">Receipt total is the whole amount you paid, including postage.</p>
+      <div class="field"><label for="rv_order">Order / invoice no.</label><input id="rv_order" autocomplete="off" value="${esc(r.orderNo||"")}"></div>
       <div class="field"><label for="rv_notes">Notes</label><textarea id="rv_notes">${esc(r.notes||"")}</textarea></div>
       <button type="button" class="btn primary" data-rcsave="${r.id}">Save details</button></section>
     <section class="fsec"><h3>Coins on this receipt<span class="sp" style="flex:1"></span><span class="muted small">${coins.length}</span></h3>
-      ${coins.length?`<div class="listbox">${coins.map(c=>`<div class="rcc">${faceHTML(c).replace('class="face"','class="face" style="--face:40px;width:40px;height:40px"')}<span class="tx"><b>${esc(titleOf(c))}</b><span>${esc([c.year,blank(c.price)?"No price yet":aud(priceAUD(c)??c.price)+" each"].filter(Boolean).join(" · "))}</span></span><button type="button" class="btn sm" data-open="${c.id}">Open</button><button type="button" class="btn sm ghost" data-rcunc="${c.id}" aria-label="Unlink ${esc(titleOf(c))}">×</button></div>`).join("")}</div>`:`<p class="m0 muted">Not linked to any coins yet.</p>`}
+      ${coins.length?`<div class="listbox">${coins.map(c=>{ const q=qtyOf(c), cv=covOf(c,r.id), pe=postageEach(c), ce=costEach(c); return `<div class="rcc"><button type="button" class="rccmain" data-open="${c.id}">${faceHTML(c).replace('class="face"','class="face" style="--face:40px;width:40px;height:40px"')}<span class="tx"><b>${esc(titleOf(c))}</b><span>${esc([c.year,q>1?"Qty "+q:"",blank(c.price)?"No price yet":aud(priceAUD(c)??c.price)+" each"+(pe>0&&ce!=null?" + "+aud(Math.round(pe*100)/100)+" postage = "+aud(ce):"")].filter(Boolean).join(" · "))}</span></span></button><button type="button" class="btn sm ghost rcx" data-rcunc="${c.id}" aria-label="Unlink ${esc(titleOf(c))}">×</button>${q>1?`<div class="rccov"><span>This receipt covers</span><div class="mini" role="group" aria-label="How many on this receipt"><button type="button" data-rccov="${c.id}|-1" aria-label="Fewer" ${cv<=1?"disabled":""}>−</button><b>${cv}</b><button type="button" data-rccov="${c.id}|1" aria-label="More" ${cv>=q?"disabled":""}>+</button></div><span>of ${q}</span></div>`:""}</div>`; }).join("")}</div>`:`<p class="m0 muted">Not linked to any coins yet.</p>`}
       ${d.linking?`<div class="panel" style="padding:12px;box-shadow:none;border:1px solid var(--line)"><div class="field"><label for="rlq">Find coins</label><input id="rlq" type="search" autocomplete="off" value="${esc(d.lq||"")}" placeholder="e.g. 2022 dinosaurs"></div><div class="cklist" id="rlList">${linkRows(d,linkList(d))}</div><label class="check-inline"><input type="checkbox" id="rlFill" ${d.fill!==false?"checked":""}><span>Fill empty date acquired and source from this receipt</span></label><div class="row"><button type="button" class="btn primary" data-rclsave>Save links</button><button type="button" class="btn ghost" data-rclcancel>Cancel</button></div></div>`:`<button type="button" class="btn" data-rclink>Link to more coins</button>`}
       ${coins.length&&(r.date||r.seller)&&!d.linking?`<button type="button" class="btn" data-rcfillall="${r.id}">Fill empty date &amp; source on these coins</button>`:""}
-      ${each!=null&&!d.linking?`<div class="todo" style="background:#DDF5F2"><span>Total ${esc(aud(r.total))} across ${units} item${units===1?"":"s"} = <b>${esc(aud(each))} each</b>${noPrice<coins.length?` · ${coins.length-noPrice} already ha${coins.length-noPrice===1?"s":"ve"} a price`:""}</span><button type="button" class="btn sm" data-rcsplit="${r.id}">${noPrice?"Fill empty prices":d.confirmSplit?"Tap again to replace":"Replace prices"}</button></div>`:""}
+      ${!d.linking?splitHTML(r,d):""}
     </section>
     <button type="button" class="btn danger" data-rcdel="${r.id}" ${coins.length?"disabled":""}>${d.confirmDel?"Tap again to delete":"Delete receipt"}</button>${coins.length?`<p class="m0 muted small">A receipt can only be deleted once no coins are linked to it.</p>`:""}
   </div>`;
@@ -813,14 +823,14 @@ async function makeReport(){
   const o=S.rep, out=$("#repOut"), say=m=>{ if(out) out.innerHTML=`<span class="muted small">${esc(m)}</span>`; };
   say("Making the PDF…"); await loadJsPDF();
   const list=sorted(S.coins.filter(c=>o.sold||isOwned(c)).slice());
-  const totP=list.reduce((a,c)=>{ const p=priceAUD(c); return a+(p==null?0:p*qtyOf(c)); },0), totV=list.reduce((a,c)=>a+(blank(c.value)?0:+c.value*qtyOf(c)),0), nCoins=list.reduce((a,c)=>a+coinsIn(c),0);
+  const totP=list.reduce((a,c)=>{ const p=costEach(c); return a+(p==null?0:p*qtyOf(c)); },0), totPost=list.reduce((a,c)=>a+(priceAUD(c)==null?0:postageTotal(c)),0), totV=list.reduce((a,c)=>a+(blank(c.value)?0:+c.value*qtyOf(c)),0), nCoins=list.reduce((a,c)=>a+coinsIn(c),0);
   const { jsPDF }=window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210, M=14, BOT=283;
   const PW=o.photos?(o.two?27:14):0, COINW=86-PW;
-  const cols=[...(o.photos?[["",PW]]:[]),["Coin",COINW],["Grade",18],["Qty",10],["Paid each",21],["Value each",21],["Kept in",26]];
+  const cols=[...(o.photos?[["",PW]]:[]),["Coin",COINW],["Grade",18],["Qty",10],["Cost each",21],["Value each",21],["Kept in",26]];
   let y=M, anyRef=false;
   doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(49,46,129); doc.text("Coin collection - insurance listing",M,y+5); y+=10;
   doc.setFont("helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
-  const sub=pdfTxt(`${o.by?"Prepared for "+o.by+"  ·  ":""}${fmtDate(todayISO())}  ·  ${list.length} records, ${nCoins} coins  ·  Paid ${aud(Math.round(totP))||"$0"}  ·  Current value ${aud(Math.round(totV))||"$0"}`);
+  const sub=pdfTxt(`${o.by?"Prepared for "+o.by+"  ·  ":""}${fmtDate(todayISO())}  ·  ${list.length} records, ${nCoins} coins  ·  Total cost ${aud(Math.round(totP))||"$0"}${totPost?" (incl. postage "+aud(Math.round(totPost))+")":""}  ·  Current value ${aud(Math.round(totV))||"$0"}`);
   doc.text(doc.splitTextToSize(sub,W-2*M),M,y+3); y+=9;
   const head=()=>{ doc.setFillColor(238,242,255); doc.rect(M,y,W-2*M,7,"F"); doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(49,46,129); let x=M+1.5; for(const [h,w] of cols){ doc.text(h,x,y+4.8); x+=w; } y+=8; doc.setFont("helvetica","normal"); doc.setTextColor(20,20,20); };
   head(); let n=0;
@@ -841,19 +851,43 @@ async function makeReport(){
     doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text(tl,x,y+4); doc.setFont("helvetica","normal"); doc.setFontSize(8);
     let ly=y+4+tl.length*3.9; doc.setTextColor(90,90,90); if(dl.length){ doc.text(dl,x,ly); ly+=dl.length*3.4; } if(cl.length){ doc.text(cl,x,ly); ly+=cl.length*3.4; } if(rl.length){ doc.setTextColor(146,64,14); doc.setFont("helvetica","italic"); doc.text(rl,x,ly); doc.setFont("helvetica","normal"); } doc.setTextColor(20,20,20);
     x+=COINW; doc.setFontSize(8.5);
-    const pa=priceAUD(c);
+    const pa=costEach(c);
     doc.text(gl,x,y+4); x+=18;
     for(const [val,w] of [[String(qtyOf(c)),10],[pa!=null?aud(pa):"",21],[blank(c.value)?"":aud(c.value),21]]){ doc.text(pdfTxt(val),x,y+4); x+=w; }
     doc.setFontSize(8); doc.text(kl,x,y+4);
     y+=h; doc.setDrawColor(225,228,236); doc.line(M,y,W-M,y); y+=1;
   }
   if(y+12>BOT){ doc.addPage(); y=M; }
-  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.text(pdfTxt(`Totals: ${nCoins} coins  ·  Paid ${aud(Math.round(totP))||"$0"}  ·  Current value ${aud(Math.round(totV))||"$0"}`),M,y+6);
-  const pages=doc.getNumberOfPages(); for(let i=1;i<=pages;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(120,120,120); doc.text(pdfTxt(`Values are the owner's own estimates.${anyRef?" Photos marked as reference images are catalogue pictures, not the owner's coin.":""} MyMint ${APP_VERSION}  ·  Page ${i} of ${pages}`),M,292,{maxWidth:W-2*M}); }
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.text(pdfTxt(`Totals: ${nCoins} coins  ·  Total cost ${aud(Math.round(totP))||"$0"}  ·  Current value ${aud(Math.round(totV))||"$0"}`),M,y+6);
+  const pages=doc.getNumberOfPages(); for(let i=1;i<=pages;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(120,120,120); doc.text(pdfTxt(`Cost each = price paid plus a share of any postage. Values are the owner's own estimates.${anyRef?" Photos marked as reference images are catalogue pictures, not the owner's coin.":""} MyMint ${APP_VERSION}  ·  Page ${i} of ${pages}`),M,292,{maxWidth:W-2*M}); }
   const blob=doc.output("blob"), name=`mymint-insurance-report-${todayISO()}.pdf`, url=URL.createObjectURL(blob);
   const canShare=!!(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:"application/pdf"})]}));
   S._repFile=new File([blob],name,{type:"application/pdf"});
   if(out) out.innerHTML=`<a class="btn primary" href="${url}" download="${esc(name)}">Save PDF to phone</a><a class="btn" href="${url}" target="_blank" rel="noopener">Open PDF</a>${canShare?`<button type="button" class="btn" data-sharerep>Share…</button>`:""}<span class="muted small">${pages} page${pages===1?"":"s"} · ${(blob.size/1024).toFixed(0)} KB</span>`;
+}
+
+/* ================= cost: price + share of receipt postage ================= */
+const covOf=(c,rid)=>{ const q=qtyOf(c); const v=c.receiptCover&&c.receiptCover[rid]; return v?Math.min(q,Math.max(1,parseInt(v,10)||q)):q; };
+function rcUnits(r){ return rcCoins(r.id).reduce((a,c)=>a+covOf(c,r.id),0); }
+function postageTotal(c){ let t=0; for(const rid of (c.receiptIds||[])){ const r=S.receipts.find(x=>x.id===rid); if(!r||blank(r.postage)||!+r.postage) continue; const u=rcUnits(r); if(u) t+=+r.postage*covOf(c,rid)/u; } return t; }
+const postageEach=c=>postageTotal(c)/qtyOf(c);
+function costEach(c){ const p=priceAUD(c); if(p==null) return null; return Math.round((p+postageEach(c))*100)/100; }
+function gainPill(c){ const ce=costEach(c); if(ce==null||blank(c.value)||+c.value===ce) return ""; const up=+c.value>=ce; return ` <span class="grade" style="${up?"background:#DCFCE7;color:#166534":"background:#FEE2E2;color:#991B1B"}">${up?"+":"−"}${esc(aud(Math.abs(Math.round((+c.value-ce)*100)/100)))}</span>`; }
+function splitInfo(r){
+  const coins=rcCoins(r.id); if(blank(r.total)||!coins.length) return null;
+  const post=+r.postage||0, items=Math.round((+r.total-post)*100)/100, units=coins.reduce((a,c)=>a+covOf(c,r.id),0);
+  const unpriced=coins.filter(c=>blank(c.price)), priced=coins.filter(c=>!blank(c.price));
+  const known=Math.round(priced.reduce((a,c)=>a+(priceAUD(c)??+c.price)*covOf(c,r.id),0)*100)/100, uUnits=unpriced.reduce((a,c)=>a+covOf(c,r.id),0);
+  if(uUnits){ const each=Math.round((items-known)/uUnits*100)/100; return {mode:"fill",post,items,known,each,units:uUnits,targets:unpriced}; }
+  if(Math.abs(items-known)<0.011) return {mode:"match",post,items,known};
+  return {mode:"mismatch",post,items,known,even:Math.round(items/units*100)/100,units,targets:coins};
+}
+function splitHTML(r,d){ const s=splitInfo(r); if(!s) return "";
+  const lead=s.post?`Receipt ${esc(aud(r.total))} − postage ${esc(aud(s.post))} = <b>${esc(aud(s.items))}</b> for the coins.`:`Receipt ${esc(aud(r.total))} for the coins.`;
+  if(s.mode==="match") return `<div class="todo" style="background:#DCFCE7"><span>✓ <b>Matches the prices entered.</b> ${lead}</span></div>`;
+  if(s.mode==="fill"){ if(s.each<=0) return `<div class="todo"><span>${lead} The prices already entered add up to ${esc(aud(s.known))}, which leaves nothing for the coin${s.units===1?"":"s"} without a price — check the prices or the receipt total.</span></div>`;
+    return `<div class="todo" style="background:#DDF5F2"><span>${lead}${s.known?` Prices entered: ${esc(aud(s.known))}.`:""} That leaves <b>${esc(aud(s.each))} each</b> for ${s.units} coin${s.units===1?"":"s"} without a price.</span><button type="button" class="btn sm" data-rcsplit="${r.id}">Fill empty prices</button></div>`; }
+  return `<div class="todo"><span>${lead} The prices entered add up to ${esc(aud(s.known))}. An even split would be <b>${esc(aud(s.even))} each</b>.</span><button type="button" class="btn sm" data-rcsplit="${r.id}">${d.confirmSplit?"Tap again to replace":"Replace prices"}</button></div>`;
 }
 
 /* ================= built-in collector's guide ================= */
@@ -1029,22 +1063,25 @@ document.addEventListener("click",async e=>{
   if(d.rcopen){ openView({kind:"receipt",id:d.rcopen}); return; }
   if(d.rcfile){ await viewReceiptFile(S.receipts.find(r=>r.id===d.rcfile)); return; }
   if(d.rcdl){ const r=S.receipts.find(x=>x.id===d.rcdl); if(r) await saveReceiptFile(r); return; }
-  if(d.rcsave){ const r={...S.receipts.find(x=>x.id===d.rcsave)}; const tv=($("#rv_total").value||"").replace(/[$,\s]/g,"");
-    Object.assign(r,{date:$("#rv_date").value,seller:($("#rv_seller").value||"").trim(),orderNo:($("#rv_order").value||"").trim(),notes:($("#rv_notes").value||"").trim(),total:tv===""||isNaN(+tv)?null:+tv,updatedAt:new Date().toISOString()});
+  if(d.rcsave){ const r={...S.receipts.find(x=>x.id===d.rcsave)}; const num=id=>{ const v=($(id).value||"").replace(/[$,\s]/g,""); return v===""||isNaN(+v)?null:+v; };
+    Object.assign(r,{date:$("#rv_date").value,seller:($("#rv_seller").value||"").trim(),orderNo:($("#rv_order").value||"").trim(),notes:($("#rv_notes").value||"").trim(),total:num("#rv_total"),postage:num("#rv_post"),updatedAt:new Date().toISOString()});
+    if(r.total!=null&&r.postage!=null&&r.postage>r.total){ toast("Postage can't be more than the receipt total"); return; }
     for(const k of Object.keys(r)) if(r[k]===""||r[k]==null) delete r[k]; await dbPut("receipts",r); await reload(); drawTop(); toast("Receipt details saved"); return; }
   if("rclink" in d){ const t=topV(); t.linking=true; t.sel=new Set(rcCoins(t.id).map(c=>c.id)); t.fill=true; t.lq=""; drawTop(); return; }
   if("rclcancel" in d){ const t=topV(); t.linking=false; drawTop(); return; }
   if("rclsave" in d){ const t=topV(); const r=S.receipts.find(x=>x.id===t.id); let added=0, removed=0;
     for(const c0 of S.coins){ const has=(c0.receiptIds||[]).includes(r.id), want=t.sel.has(c0.id); if(has===want) continue; const c=clone(c0);
-      if(want){ c.receiptIds=[...(c.receiptIds||[]),r.id]; if(t.fill!==false) fillFromReceipt(c,r,false); added++; } else { c.receiptIds=(c.receiptIds||[]).filter(x=>x!==r.id); if(!c.receiptIds.length) delete c.receiptIds; removed++; }
+      if(want){ c.receiptIds=[...(c.receiptIds||[]),r.id]; if(t.fill!==false) fillFromReceipt(c,r,false); added++; } else { c.receiptIds=(c.receiptIds||[]).filter(x=>x!==r.id); if(!c.receiptIds.length) delete c.receiptIds; if(c.receiptCover){ delete c.receiptCover[r.id]; if(!Object.keys(c.receiptCover).length) delete c.receiptCover; } removed++; }
       c.updatedAt=new Date().toISOString(); await dbPut("coins",c); }
     await reload(); t.linking=false; drawTop(); toast(added||removed?`Linked ${added}, unlinked ${removed}`:"No changes"); return; }
-  if(d.rcunc){ const t=topV(); const c=clone(S.coins.find(x=>x.id===d.rcunc)); c.receiptIds=(c.receiptIds||[]).filter(x=>x!==t.id); if(!c.receiptIds.length) delete c.receiptIds; c.updatedAt=new Date().toISOString(); await dbPut("coins",c); await reload(); drawTop(); toast("Unlinked from this receipt"); return; }
+  if(d.rcunc){ const t=topV(); const c=clone(S.coins.find(x=>x.id===d.rcunc)); c.receiptIds=(c.receiptIds||[]).filter(x=>x!==t.id); if(c.receiptCover){ delete c.receiptCover[t.id]; if(!Object.keys(c.receiptCover).length) delete c.receiptCover; } if(!c.receiptIds.length) delete c.receiptIds; c.updatedAt=new Date().toISOString(); await dbPut("coins",c); await reload(); drawTop(); toast("Unlinked from this receipt"); return; }
   if(d.rcfillall){ const r=S.receipts.find(x=>x.id===d.rcfillall); let n=0; for(const c0 of rcCoins(r.id)){ const c=clone(c0); if(fillFromReceipt(c,r,false)){ c.updatedAt=new Date().toISOString(); await dbPut("coins",c); n++; } } await reload(); drawTop(); toast(n?`Filled ${n} coin${n===1?"":"s"}`:"Nothing to fill — those fields already have values"); return; }
-  if(d.rcsplit){ const t=topV(); const r=S.receipts.find(x=>x.id===d.rcsplit); const coins=rcCoins(r.id); const units=coins.reduce((a,c)=>a+qtyOf(c),0); if(!units||blank(r.total)) return; const each=Math.round(+r.total/units*100)/100; const noPrice=coins.filter(c=>blank(c.price));
-    let targets=noPrice; if(!noPrice.length){ if(!t.confirmSplit){ t.confirmSplit=true; drawTop(); return; } targets=coins; }
+  if(d.rcsplit){ const t=topV(); const r=S.receipts.find(x=>x.id===d.rcsplit); const si=splitInfo(r); if(!si||si.mode==="match") return;
+    let each, targets;
+    if(si.mode==="fill"){ if(si.each<=0) return; each=si.each; targets=si.targets; } else { if(!t.confirmSplit){ t.confirmSplit=true; drawTop(); return; } each=si.even; targets=si.targets; }
     for(const c0 of targets){ const c=clone(c0); c.price=each; c.priceCur="AUD"; delete c.priceAud; delete c.priceRate; if(blank(c.acqHow)) c.acqHow="Bought"; c.updatedAt=new Date().toISOString(); await dbPut("coins",c); }
     t.confirmSplit=false; await reload(); drawTop(); toast(`${targets.length} price${targets.length===1?"":"s"} set to ${aud(each)} each`); return; }
+  if(d.rccov){ const t=topV(); const [cid,dl]=d.rccov.split("|"); const c=clone(S.coins.find(x=>x.id===cid)); const q=qtyOf(c); const n=Math.min(q,Math.max(1,covOf(c,t.id)+(+dl))); c.receiptCover={...(c.receiptCover||{})}; if(n===q) delete c.receiptCover[t.id]; else c.receiptCover[t.id]=n; if(!Object.keys(c.receiptCover).length) delete c.receiptCover; c.updatedAt=new Date().toISOString(); await dbPut("coins",c); await reload(); t.confirmSplit=false; drawTop(); return; }
   if(d.rcdel){ const t=topV(); if(rcCoins(d.rcdel).length) return; if(!t.confirmDel){ t.confirmDel=true; drawTop(); return; } const r=S.receipts.find(x=>x.id===d.rcdel); await dbDel("receipts",r.id); await reload(); await dropUnused([r.fileId]); toast("Receipt deleted"); await popView(); return; }
   if("shownophoto" in d){ S.f=clone(FDEF); S.f.photos="none"; if(S.rep&&S.rep.sold) S.f.status="all"; S.tab="coins"; render(); scrollTo(0,0); return; }
   /* wants */

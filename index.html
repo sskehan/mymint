@@ -94,7 +94,7 @@ section.view{padding-block:14px;display:flex;flex-direction:column;gap:14px}
 .tile{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px 10px;border-radius:16px;border:0;cursor:pointer;text-align:center;color:var(--ink);min-width:0}
 .tile .face{width:var(--face,66px);height:var(--face,66px)}
 .tile .yr{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.2}
-.tile .nm{font-size:11px;color:var(--ink-2);line-height:1.25;min-height:28px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.tile .nm{display:flex;flex-direction:column;gap:2px;line-height:1.25;word-break:break-word;overflow-wrap:anywhere}.tile .nm b{font-size:12.5px;font-weight:700;color:var(--ink)}.tile .nm small{font-size:10.5px;color:var(--ink-3)}
 .tile .qty{position:absolute;top:8px;left:8px;background:#111827;color:#fff;border-radius:7px;font-size:10px;font-weight:800;padding:1px 6px}
 .reftag{position:absolute;top:8px;right:8px;background:var(--ref);color:#fff;border-radius:5px;font-size:10px;font-weight:800;padding:1px 5px;letter-spacing:.04em}
 .tiles.s{--cols:4;--face:54px}.tiles.s .nm{display:none}.tiles.s .tile{padding:10px 4px 8px}
@@ -105,8 +105,8 @@ section.view{padding-block:14px;display:flex;flex-direction:column;gap:14px}
 .lrow:last-child{border-bottom:0}
 .lrow .face{--face:46px;width:46px;height:46px;flex:none}
 .lrow .tx{flex:1;min-width:0}
-.lrow .t1{font-size:15px;font-weight:700;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lrow .t2{font-size:12px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lrow .t1{display:block;font-size:15px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.lrow .t2{display:block;font-size:12px;color:var(--ink-3);line-height:1.3;overflow-wrap:anywhere}
 .lrow .rt{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:12px;font-weight:700;color:var(--ink-2)}
 
 /* coin face (photo or drawn coin) */
@@ -329,6 +329,19 @@ textarea.csv{width:100%;min-height:160px;font:12px ui-monospace,Menlo,monospace;
 .dmain .track{height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden}
 .dmain .fill{height:100%;border-radius:5px}
 .check-inline input:disabled+span{opacity:.5}
+.rcc{flex-wrap:wrap}
+.rccmain{flex:1;min-width:0;display:flex;align-items:center;gap:10px;border:0;background:none;padding:2px 0;text-align:left;cursor:pointer;color:inherit;font:inherit}
+.rcc .tx b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rcx{width:40px;min-width:40px;padding:0;font-size:18px}
+.rccov{flex-basis:100%;display:flex;align-items:center;gap:8px;padding:2px 0 4px 50px;font-size:13px;color:var(--ink-2);flex-wrap:wrap}
+.mini{display:flex;align-items:center;border:1px solid #D1D5DE;border-radius:10px;overflow:hidden}
+.mini button{width:36px;height:34px;border:0;background:var(--surface-2);font-size:18px;font-weight:700;cursor:pointer}
+.mini button:disabled{opacity:.35;cursor:default}
+.mini b{min-width:30px;text-align:center;font-size:15px}
+.phedit{grid-template-columns:72px minmax(0,1fr)}
+.phedit .pimg{width:72px;height:72px}
+.whose button{white-space:nowrap;padding:0 6px}
+.phbtns .btn{white-space:nowrap}
 #report{display:none}
 @media print{
   @page{size:A4;margin:12mm}
