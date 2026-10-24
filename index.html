@@ -289,6 +289,46 @@ textarea.csv{width:100%;min-height:160px;font:12px ui-monospace,Menlo,monospace;
 .field .stepper input{width:64px!important;min-width:64px;flex:none;border:0!important;border-radius:0!important;padding:0!important;min-height:0!important;height:44px}
 .stepper{flex:none;width:100%;max-width:180px;justify-content:space-between}
 .inrow select{flex:none}
+.setb{display:inline-block;padding:1px 8px;border-radius:7px;font-size:11px;font-weight:800;background:#E0E7FF;color:#3730A3;white-space:nowrap}
+.setbox{display:flex;flex-direction:column;gap:12px;border-top:1px solid #EEF0F5;padding-top:12px}
+.setin{display:flex;flex-direction:column;gap:10px}
+.sitems{display:flex;flex-direction:column;gap:8px}
+.sitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#F5F6FB;border:1px solid var(--line)}
+.sitem .tx,.sdet summary .tx,.rcrow .tx,.rcc .tx,.ckrow .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.sitem .tx b,.sdet summary .tx b,.rcrow .tx b,.rcc .tx b,.ckrow .tx b{font-size:14px;line-height:1.3;overflow-wrap:anywhere}
+.sitem .tx span,.sdet summary .tx span,.rcrow .tx span,.rcc .tx span,.ckrow .tx span{font-size:12px;color:var(--ink-3)}
+.siman{padding:12px;border-radius:12px;background:var(--primary-soft)}
+.sdet{border:1px solid var(--line);border-radius:12px;background:#fff}
+.sdet summary{list-style:none;display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer}
+.sdet summary::-webkit-details-marker{display:none}
+.sdet summary::after{content:"▾";color:var(--ink-3)}
+.sdet[open] summary::after{content:"▴"}
+.sdbody{padding:0 12px 6px}
+.rcthumb{width:56px;height:56px;border-radius:10px;overflow:hidden;flex:none;background:#fff;border:1px solid #C3C8D2;display:flex;align-items:center;justify-content:center}
+.rcthumb img{width:100%;height:100%;object-fit:cover}
+.rcpdf{background:#FEE2E2;border-color:#FCA5A5;color:#991B1B;font-weight:800;font-size:13px}
+.rcitem{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;padding:10px;border-radius:14px;border:1px solid #99D9CF;background:#F0FBF9;align-items:start}
+.rcitem .pc{display:flex;flex-direction:column;gap:8px;min-width:0}
+.rcfields{display:flex;flex-direction:column;gap:8px}
+.rcfields .inp,.rcfields input{font-size:15px}
+.rclist{display:flex;flex-direction:column;gap:8px}
+.rcrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border:0;border-bottom:1px solid #EEF0F5;background:#fff;width:100%;text-align:left;cursor:pointer;color:var(--ink)}
+.rclist .rcrow{border:1px solid var(--line);border-radius:12px}
+.listbox .rcrow:last-child{border-bottom:0}
+.rcc{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #EEF0F5}
+.rcc:last-child{border-bottom:0}
+.cklist{display:flex;flex-direction:column;max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+.ckrow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #EEF0F5;cursor:pointer}
+.ckrow input{width:22px;height:22px;flex:none;margin:0}
+.dlist{display:flex;flex-direction:column;gap:12px}
+.drow{display:flex;align-items:center;gap:12px}
+.drow .gico{width:40px;height:40px;border-radius:12px;font-size:12px}
+.dmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.dtop{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px}
+.dtop span{font-weight:800}
+.dmain .track{height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+.dmain .fill{height:100%;border-radius:5px}
+.check-inline input:disabled+span{opacity:.5}
 #report{display:none}
 @media print{
   @page{size:A4;margin:12mm}
@@ -328,6 +368,7 @@ textarea.csv{width:100%;min-height:160px;font:12px ui-monospace,Menlo,monospace;
 <input type="file" id="restoreIn" accept=".zip,.json,application/zip,application/json,application/octet-stream" hidden>
 <input type="file" id="camIn" accept="image/*" capture="environment" hidden>
 <input type="file" id="phIn" accept="image/*" multiple hidden>
+<input type="file" id="rcIn" accept="image/*,application/pdf,.pdf" multiple hidden>
 
 <script src="jszip.min.js"></script>
 <script src="core.js"></script>

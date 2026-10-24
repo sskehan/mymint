@@ -1,10 +1,10 @@
 /* MyMint — core: on-phone storage, money, Dropbox live copy, snapshots, backup & restore.
    The storage and Dropbox parts follow the same design as MyMaglites. */
 "use strict";
-const APP_ID="mymint", APP_NAME="MyMint", APP_VERSION="1.08", BACKUP_VERSION=1;
+const APP_ID="mymint", APP_NAME="MyMint", APP_VERSION="1.09", BACKUP_VERSION=1;
 
 /* ================= storage (IndexedDB, on this device) ================= */
-const STORES=["coins","wanted","settings","files","meta","outbox"];
+const STORES=["coins","wanted","settings","receipts","files","meta","outbox"];
 let _db, _dbP;
 function openRaw(v){ return new Promise((res,rej)=>{ const r=v?indexedDB.open(APP_ID,v):indexedDB.open(APP_ID);
   r.onupgradeneeded=()=>{ const d=r.result; for(const s of STORES) if(!d.objectStoreNames.contains(s)) d.createObjectStore(s,{keyPath:"id"}); };
@@ -73,11 +73,11 @@ async function askPersist(){ try{ if(navigator.storage&&navigator.storage.persis
 
 /* ================= backup file ================= */
 function backupName(kind){ return `mymint-${kind||"backup"}-${stamp()}.zip`; }
-function fileExt(f){ return (f.type==="image/jpeg"?"jpg":f.type==="image/png"?"png":f.type==="image/webp"?"webp":(String(f.name||"").split(".").pop()||"bin")).toLowerCase().replace(/[^a-z0-9]/g,"")||"bin"; }
+function fileExt(f){ return (f.type==="image/jpeg"?"jpg":f.type==="application/pdf"?"pdf":f.type==="image/png"?"png":f.type==="image/webp"?"webp":(String(f.name||"").split(".").pop()||"bin")).toLowerCase().replace(/[^a-z0-9]/g,"")||"bin"; }
 async function buildBackup(kind){
   const zip=new JSZip(); const files=await dbAll("files"); const manifest=[];
   for(const f of files){ const path=`files/${f.id}.${fileExt(f)}`; zip.file(path,f.blob); manifest.push({id:f.id,type:f.type,name:f.name,path}); }
-  const data={app:APP_ID,version:BACKUP_VERSION,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),counts:{coins:S.coins.length,files:files.length},coins:S.coins,wanted:S.wanted,settings:S.settings,files:manifest};
+  const data={app:APP_ID,version:BACKUP_VERSION,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),counts:{coins:S.coins.length,files:files.length,receipts:(S.receipts||[]).length},coins:S.coins,wanted:S.wanted,settings:S.settings,receipts:S.receipts||[],files:manifest};
   zip.file("backup.json",JSON.stringify(data,null,1));
   const blob=await zip.generateAsync({type:"blob",compression:"STORE"});
   return {blob,name:backupName(kind),nFiles:files.length};
@@ -99,7 +99,7 @@ async function readRestore(file){
     else { const txt=(await file.text()).replace(/^\ufeff/,"").trim(); if(!txt.startsWith("{")) throw new Error(file.size?"That file isn't a MyMint backup (it may not have downloaded fully — try saving it again).":"That file is empty — it didn't download fully. Save it again and retry."); data=JSON.parse(txt); }
     if(data.app!==APP_ID) throw new Error("This file is from a different app.");
     _restore={zip,data};
-    const html=`<div class="banner" style="margin-top:8px"><span>Backup from ${fmtWhen(data.exportedAt)}: ${data.coins.length} coins, ${(data.files||[]).length} photos, ${(data.wanted||[]).length} wanted. This replaces what's on this ${devWord()}${S.coins.length?` (${S.coins.length} coins)`:""}.</span><button type="button" class="btn primary sm" data-rsyes>Restore</button><button type="button" class="btn ghost sm" data-rsno>Cancel</button></div>`;
+    const html=`<div class="banner" style="margin-top:8px"><span>Backup from ${fmtWhen(data.exportedAt)}: ${data.coins.length} coins, ${(data.files||[]).length} photos and files, ${(data.receipts||[]).length} receipts, ${(data.wanted||[]).length} wanted. This replaces what's on this ${devWord()}${S.coins.length?` (${S.coins.length} coins)`:""}.</span><button type="button" class="btn primary sm" data-rsyes>Restore</button><button type="button" class="btn ghost sm" data-rsno>Cancel</button></div>`;
     if($("#rsConfirm")){ $("#rsConfirm").innerHTML=html; st.textContent=""; }
     else { S.tab="more"; S.moreView="backup"; render(); $("#rsConfirm").innerHTML=html; }
   }catch(e){ if($("#rsStat")) $("#rsStat").textContent=""; toast(e.message||"That file couldn't be read."); }
@@ -109,10 +109,10 @@ async function doRestore(){
   if(S.readOnly){ toast(RO_MSG); return; }
   if(dbxOn()&&S.coins.length){ st.textContent="Saving a snapshot of what's here first…"; try{ await uploadSnapshot("before-restore"); }catch(e){ st.textContent=""; toast("Couldn't save a snapshot to Dropbox first ("+(e.message||e)+"). Make a backup file, then try again."); return; } }
   st.textContent="Restoring…"; _bulk++; try{
-  for(const s of ["coins","wanted","settings","files"]) await dbClear(s);
+  for(const s of ["coins","wanted","settings","receipts","files"]) await dbClear(s);
   for(const u of Object.values(S.urls)) URL.revokeObjectURL(u); S.urls={};
   let n=0; for(const f of (zip?data.files||[]:[])){ const z=zip.file(f.path); if(!z) continue; const b=await z.async("blob"); await dbPut("files",{id:f.id,type:f.type,name:f.name,blob:new Blob([b],{type:f.type})}); if(++n%10===0) st.textContent=`Restoring photos ${n} of ${data.files.length}…`; }
-  for(const c of data.coins) await dbPut("coins",c); for(const w of (data.wanted||[])) await dbPut("wanted",w); for(const x of (data.settings||[])) await dbPut("settings",x);
+  for(const c of data.coins) await dbPut("coins",c); for(const w of (data.wanted||[])) await dbPut("wanted",w); for(const x of (data.settings||[])) await dbPut("settings",x); for(const x of (data.receipts||[])) await dbPut("receipts",x);
   S.meta.lastBackup=data.exportedAt; S.meta.changes=0; S.meta.needFull=true; S.meta.snapDirty=true; await tx("outbox","readwrite",os=>os.clear()); await saveMeta();
   _restore=null; await reload(); }finally{ _bulk--; } askPersist(); S.tab="coins"; render(); toast(`Restored ${data.coins.length} coins`); if(dbxOn()) syncNow();
 }
@@ -128,7 +128,7 @@ const PROMPT_EVERY=10, SYNC_DELAY=3000, VERIFY_DAYS=7, SNAP_DAILY_DAYS=30, SNAP_
 const DBX_TOKEN="https://api.dropboxapi.com/oauth2/token";
 const RO_MSG="This device has been replaced as the main one — view only. Use More › Backup & restore to make it the main device again.";
 let _syncT=null, _syncing=false, _syncAgain=false;
-const LIST_STORES=["wanted","settings"];
+const LIST_STORES=["wanted","settings","receipts"];
 function noteChange(s,op,key){
   S.meta.changes=(S.meta.changes||0)+1; S.meta.snapDirty=true;
   const k=s==="coins"?"t:"+key:s==="files"?"f:"+key:LIST_STORES.includes(s)?"l:"+s:null;
@@ -140,7 +140,7 @@ function noteChange(s,op,key){
 }
 function hdrStatus(){ const el=$("#hdrsub"); if(!el) return; const ch=S.meta.changes||0;
   const st=S.readOnly?"view only":_syncing?"syncing…":ch?(dbxOn()?`${ch} change${ch===1?"":"s"} waiting`:`${ch} change${ch===1?"":"s"} not backed up`):dbxOn()?"in Dropbox ✓":S.meta.lastBackup?"backed up ✓":"not backed up";
-  const n=S.coins.filter(isOwned).reduce((a,c)=>a+(+c.qty||1),0);
+  const n=S.coins.filter(isOwned).reduce((a,c)=>a+(typeof coinsIn==="function"?coinsIn(c):(+c.qty||1)),0);
   el.textContent=`${n} coin${n===1?"":"s"} · ${st}`; el.classList.toggle("warnTxt",S.readOnly||(!_syncing&&(ch>0||(!dbxOn()&&!S.meta.lastBackup))&&S.coins.length>0)); }
 function dbxOn(){ return !!(S.meta.dbx&&S.meta.dbx.refresh); }
 function appKey(){ return DBX_APP_KEY||(S.meta.dbx||{}).appKey||""; }
@@ -294,7 +294,7 @@ async function dbxReconcile(mode){
 }
 async function writeManifest(prev){
   const man={app:APP_ID,schema:1,appVersion:APP_VERSION,owner:deviceId(),ownerName:deviceName(),rev:((prev&&prev.rev)||0)+1,updatedAt:new Date().toISOString(),
-    counts:{coins:S.coins.length,files:(await dbAll("files")).length,wanted:S.wanted.length}};
+    counts:{coins:S.coins.length,files:(await dbAll("files")).length,wanted:S.wanted.length,receipts:(S.receipts||[]).length}};
   await dbxUpload("/live/manifest.json",JSON.stringify(man,null,1)); S.meta.owner={id:man.owner,name:man.ownerName,at:man.updatedAt}; await saveMeta();
 }
 async function enterReadOnly(man){ S.readOnly=true; S.meta.readOnly=true; S.meta.owner={id:man.owner,name:man.ownerName,at:man.updatedAt}; await saveMeta(); clearTimeout(_syncT); render(); }
@@ -316,7 +316,7 @@ async function dbxPull(progress){
   await pool(cfiles,4,async e=>{ coins.push(JSON.parse(await (await dbxDownload(e.path_lower)).text())); if(++n%5===0) progress&&progress(`Downloading ${n} of ${total}…`); });
   await pool(index,4,async f=>{ const b=await dbxDownload("/live/"+f.path); blobs.push({id:f.id,type:f.type,name:f.name,blob:new Blob([b],{type:f.type})}); if(++n%5===0) progress&&progress(`Downloading ${n} of ${total}…`); });
   _bulk++; try{
-    for(const s of ["coins","wanted","settings","files","outbox"]) await dbClear(s);
+    for(const s of ["coins","wanted","settings","receipts","files","outbox"]) await dbClear(s);
     for(const u of Object.values(S.urls)) URL.revokeObjectURL(u); S.urls={};
     for(const f of blobs) await dbPut("files",f); for(const c of coins) await dbPut("coins",c);
     for(const s of LIST_STORES) for(const x of lists[s]) await dbPut(s,x);
@@ -377,5 +377,5 @@ function dbxPanel(){
     ${dx.lastError?`<dt>Problem</dt><dd class="warnTxt">${esc(dx.lastError)}${dx.lastErrorAt?` (${fmtWhen(dx.lastErrorAt)})`:""}</dd>`:""}</dl>
     <label class="check-inline"><input type="checkbox" id="dbxWifi" ${dx.wifiOnly!==false?"checked":""}><span>Daily snapshots on Wi-Fi only <span class="muted small">(coins and photos always send straight away)</span></span></label>
     <div class="row">${S.readOnly?`<button type="button" class="btn primary" data-dbxtake>Make this the main ${devWord()}</button>`:`<button type="button" class="btn primary" data-dbxsync ${_syncing?"disabled":""}>Sync now</button><button type="button" class="btn" data-dbxcheck ${_syncing?"disabled":""}>Check Dropbox copy</button><button type="button" class="btn" data-dbxsnap ${_syncing?"disabled":""}>Snapshot now</button>`}<button type="button" class="btn ghost" data-dbxoff>Disconnect</button></div>
-    <p class="muted small m0">In Dropbox › Apps › <i>your app's name</i>: <b>live</b> is the current collection (one file per coin and photo), <b>snapshots</b> holds daily full backups (every day for ${SNAP_DAILY_DAYS} days, then one a month for ${SNAP_MONTHS} months), and <b>deleted</b> keeps anything you delete.</p></div>`;
+    <p class="muted small m0">In Dropbox › Apps › <i>your app's name</i>: <b>live</b> is the current collection (one file per coin, photo and receipt), <b>snapshots</b> holds daily full backups (every day for ${SNAP_DAILY_DAYS} days, then one a month for ${SNAP_MONTHS} months), and <b>deleted</b> keeps anything you delete.</p></div>`;
 }
