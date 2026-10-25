@@ -372,10 +372,11 @@ function nsInfo(t,issues){ return {id:t.id,url:t.url||`https://en.numista.com/${
   issues:(issues||[]).map(i=>({year:i.year!=null?i.year:i.gregorian_year,mint:i.mint_letter||"",mintage:i.mintage||null,id:i.id})).filter(i=>i.year!=null),fetchedAt:new Date().toISOString()}; }
 /* Numista's picture server doesn't let apps copy its images directly, so if that fails the picture is fetched
    through wsrv.nl, a free public image relay, and a copy is kept on the phone (and in Dropbox) from then on. */
-async function fetchImgBlob(url){ if(!url) return null;
+const IMG_FAIL=new Set();
+async function fetchImgBlob(url){ if(!url||IMG_FAIL.has(url)) return null;
   for(const u of [url,`https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=85`]){
     try{ const r=await fetch(u,{mode:"cors",referrerPolicy:"no-referrer"}); if(!r.ok) continue; const b=await r.blob(); if(/^image\//.test(b.type||"")) return b; }catch{} }
-  return null; }
+  IMG_FAIL.add(url); return null; }
 async function nsImage(url){ if(!url) return null;
   try{ const b=await fetchImgBlob(url); if(!b) throw 0; const small=await resizeImage(b,1200); const id=uid("f"); await dbPut("files",{id,blob:small,type:"image/jpeg",name:id+".jpg"}); return {id}; }
   catch{ return {id:uid("r"),url}; } }
@@ -900,7 +901,7 @@ async function makeReport(){
 }
 
 /* ================= collection checklist (by denomination, for coin fairs) ================= */
-const ckOpts=()=>S.ck||(S.ck={off:[],split:true,wants:true,money:true,photos:true,sold:false});
+const ckOpts=()=>{ const o=S.ck||(S.ck={off:[],split:true,wants:true,money:true,photos:true,sold:false}); if(!o.pic) o.pic="mine"; return o; };
 const dKey=k=>k&&DENOMS.some(d=>d.k===k)?k:"Other";
 function ckRows(o){ const rows=[];
   for(const c of S.coins.filter(c=>o.sold||isOwned(c))){ const items=c.isSet?(c.setItems||[]):[];
@@ -927,18 +928,24 @@ function viewChecklist(){ const o=ckOpts(); const secs=ckSections(o);
   <label class="check-inline"><input type="checkbox" id="ckSplit" ${o.split?"checked":""}><span>List each coin in a set on its own line</span></label>
   <label class="check-inline"><input type="checkbox" id="ckWants" ${o.wants?"checked":""}><span>"Still looking for" — my wants list, with the most I'll pay</span></label>
   <label class="check-inline"><input type="checkbox" id="ckMoney" ${o.money?"checked":""}><span>What I paid and current value</span></label>
-  <label class="check-inline"><input type="checkbox" id="ckPhotos" ${o.photos?"checked":""}><span>Picture of each coin — the Numista reverse (design side)</span></label>
+  <label class="check-inline"><input type="checkbox" id="ckPhotos" ${o.photos?"checked":""}><span>Picture of each coin (design side where there is one)</span></label>
+  ${o.photos?`<div class="field" style="margin-left:32px"><label for="ckPic">Use first</label><select id="ckPic">${Object.entries(PIC_SRC).map(([k,l])=>`<option value="${k}" ${o.pic===k?"selected":""}>${l}</option>`).join("")}</select><span class="muted small">If a coin doesn't have that, the next available picture is used.</span></div>`:""}
   <label class="check-inline"><input type="checkbox" id="ckSold" ${o.sold?"checked":""}><span>Include sold and traded coins</span></label>
   <button type="button" class="btn primary" data-mkck>Create PDF</button><div class="row" id="repOut"></div></div></section>`; }
-/* checklist picture: the Numista reverse (design side); otherwise another reference reverse, then my own reverse */
-function ckPhoto(r){ const rev=ph=>{ ph=ph||[]; return ph.find(p=>!p.mine&&p.side==="Reverse"&&p.source==="Numista")||ph.find(p=>!p.mine&&p.side==="Reverse")||ph.find(p=>p.mine&&p.side==="Reverse")||null; };
-  if(r.it) return rev(r.it.photos); return rev(r.c.photos)||((r.c.setItems||[]).map(it=>rev(it.photos)).find(Boolean))||null; }
+/* checklist picture: from the source chosen first (my photo, Mint stock image or Numista), then the others; design side (reverse) preferred */
+const PIC_SRC={mine:"My own photo",mint:"Mint stock image (RAM / Perth)",numista:"Numista image"};
+const picKind=p=>p.mine?"mine":p.source==="Numista"?"numista":/mint|ram\b|perth/i.test(p.source||"")?"mint":"ref";
+function ckPhoto(r,first){ const order=[first||"mine",...["mine","mint","numista","ref"].filter(k=>k!==(first||"mine"))];
+  const pool=r.it?(r.it.photos||[]):[...(r.c.photos||[]),...(r.c.setItems||[]).flatMap(it=>it.photos||[])];
+  const ok=pool.filter(p=>p&&!["Certificate","Slab label","Edge"].includes(p.side));
+  for(const k of order){ const ps=ok.filter(p=>picKind(p)===k); const best=ps.find(p=>p.side==="Reverse")||ps.find(p=>p.side!=="Obverse"&&p.side!=="Other")||ps.find(p=>p.side!=="Other")||ps[0]; if(best) return best; }
+  return null; }
 async function makeChecklist(){
   const o=ckOpts(), out=$("#repOut"), say=m=>{ if(out) out.innerHTML=`<span class="muted small">${esc(m)}</span>`; };
   const secs=ckSections(o).filter(s=>!o.off.includes(s.k)&&(s.rows.length||s.wants.length)); if(!secs.length){ say("Tick at least one denomination."); return; }
   let kept={done:0,failed:0}; if(o.photos){ kept=await keepRefCopies(S.coins.filter(c=>o.sold||isOwned(c)),say); }
   const secs2=ckSections(o).filter(s=>!o.off.includes(s.k)&&(s.rows.length||s.wants.length)); secs.splice(0,secs.length,...secs2);
-  say("Making the PDF…"); await loadJsPDF(); let pics=0, noPic=0;
+  say("Making the PDF…"); await loadJsPDF(); let pics=0, noPic=0, webFail=0;
   const { jsPDF }=window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210, M=14, BOT=283, IW=W-2*M;
   const PH=o.photos?11:0, MON=o.money?29:0;
   const cols=[...(o.photos?[["",PH]]:[]),["Year",13],["Coin",IW-PH-13-14-17-21-9-MON],["Mint",14],["Grade",17],["Pack",21],["Qty",9],...(o.money?[["Paid",14.5],["Value",14.5]]:[])];
@@ -971,7 +978,7 @@ async function makeChecklist(){
         const pl=doc.splitTextToSize(pdfTxt(r.pack),20), ml=doc.splitTextToSize(pdfTxt(r.mint||""),13); const h=Math.max(o.photos?12:7,tl.length*3.7+sl.length*3.2+3,pl.length*3.2+3,ml.length*3.2+3,String(r.year||"").length>6?9:0);
         if(y+h>BOT){ doc.addPage(); y=M; band(s,true); head(); }
         let x=M+1.5;
-        if(o.photos){ const ph=ckPhoto(r); const dt=ph?await imgData(ph):null; if(dt){ doc.addImage(dt,"JPEG",x-0.5,y+0.5,10,10); pics++; } else noPic++; x+=PH; }
+        if(o.photos){ let dt=null, rowWeb=false; { const tried=new Set(); for(const first of [o.pic,"mine","mint","numista","ref"]){ const ph=ckPhoto(r,first); if(!ph||tried.has(ph)) continue; tried.add(ph); dt=await imgData(ph); if(dt) break; if(ph.url||picKind(ph)==="numista") rowWeb=true; } } if(dt){ doc.addImage(dt,"JPEG",x-0.5,y+0.5,10,10); pics++; } else if(rowWeb) webFail++; else noPic++; x+=PH; }
         doc.setFontSize(8.8); doc.setFont("helvetica","bold"); { let yt=pdfTxt(String(r.year||"-")); if(doc.getTextWidth(yt)>12) yt=yt.replace(/\s*-\s*/,"-\n"); doc.text(yt.split("\n"),x,y+4); } x+=13;
         doc.text(tl,x,y+4); doc.setFont("helvetica","normal"); if(sl.length){ doc.setFontSize(7.6); doc.setTextColor(95,95,95); doc.text(sl,x,y+4+tl.length*3.7); doc.setTextColor(20,20,20); } x+=cols.find(c=>c[0]==="Coin")[1];
         doc.setFontSize(7.6); doc.text(doc.splitTextToSize(pdfTxt(r.mint||""),13),x,y+4); doc.setFontSize(8.3); x+=14; doc.text(pdfTxt(r.grade),x,y+4); x+=17; doc.setFontSize(7.6); doc.text(pl,x,y+4); x+=21; doc.setFontSize(8.3);
@@ -992,7 +999,7 @@ async function makeChecklist(){
   const blob=doc.output("blob"), name=`mymint-checklist-${todayISO()}.pdf`, url=URL.createObjectURL(blob);
   const canShare=!!(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:"application/pdf"})]}));
   S._repFile=new File([blob],name,{type:"application/pdf"});
-  if(out) out.innerHTML=`<a class="btn primary" href="${url}" download="${esc(name)}">Save PDF to phone</a><a class="btn" href="${url}" target="_blank" rel="noopener">Open PDF</a>${canShare?`<button type="button" class="btn" data-sharerep>Share…</button>`:""}<span class="muted small">${pages} page${pages===1?"":"s"} · ${(blob.size/1024).toFixed(0)} KB${o.photos?` · ${pics} picture${pics===1?"":"s"}${noPic?`, ${noPic} line${noPic===1?"":"s"} without one${kept.failed?" (some Numista pictures couldn't be downloaded — check you're online and try again)":" (no Numista reverse saved for those — open the coin › Numista to add it)"}`:""}`:""}</span>`;
+  if(out) out.innerHTML=`<a class="btn primary" href="${url}" download="${esc(name)}">Save PDF to phone</a><a class="btn" href="${url}" target="_blank" rel="noopener">Open PDF</a>${canShare?`<button type="button" class="btn" data-sharerep>Share…</button>`:""}<span class="muted small">${pages} page${pages===1?"":"s"} · ${(blob.size/1024).toFixed(0)} KB${o.photos?` · ${pics} picture${pics===1?"":"s"}${webFail?`. ${webFail} only ha${webFail===1?"s a":"ve a"} Numista picture, which Numista won't release for PDFs — add your own photo or a Mint stock image`:""}${noPic?`. ${noPic} ha${noPic===1?"s":"ve"} no pictures yet`:""}`:""}</span>`;
 }
 
 /* ================= cost: price + share of receipt postage ================= */
@@ -1259,6 +1266,7 @@ document.addEventListener("change",async e=>{
   if(el.id==="rlFill"){ topV().fill=el.checked; return; }
   if(el.dataset.rnf){ const t=topV(); const r=((t&&t.newReceipts)||[]).find(x=>x.id===el.dataset.rid); if(r) r[el.dataset.rnf]=el.value; return; }
   if(el.dataset.ckd!=null){ const o=ckOpts(), k=el.dataset.ckd; o.off=o.off.filter(x=>x!==k); if(!el.checked) o.off.push(k); return; }
+  if(el.id==="ckPic"){ ckOpts().pic=el.value; return; }
   if(["ckSplit","ckWants","ckMoney","ckPhotos","ckSold"].includes(el.id)){ ckOpts()[{ckSplit:"split",ckWants:"wants",ckMoney:"money",ckPhotos:"photos",ckSold:"sold"}[el.id]]=el.checked; const sy=scrollY; render(); scrollTo(0,sy); return; }
   if(["rPhotos","rTwo","rRef","rSold"].includes(el.id)){ S.rep[{rPhotos:"photos",rTwo:"two",rRef:"ref",rSold:"sold"}[el.id]]=el.checked; const by=$("#rBy"); if(by) S.rep.by=by.value.trim(); render(); return; }
   if(el.id==="rcIn"&&el.files.length){ const fs=[...el.files]; el.value=""; if(S._rcMode==="edit") await addReceiptToEdit(fs); else await createStdReceipt(fs[0]); return; }
