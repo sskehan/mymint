@@ -865,6 +865,7 @@ function viewReport(){ const o=S.rep||(S.rep={photos:true,two:false,ref:true,sol
   <label class="check-inline"><input type="checkbox" id="rPhotos" ${o.photos?"checked":""}><span>Include photos of my coins</span></label>
   <label class="check-inline"><input type="checkbox" id="rTwo" ${o.two?"checked":""} ${o.photos?"":"disabled"}><span>Two photos per coin (front and back, or the card)</span></label>
   <label class="check-inline"><input type="checkbox" id="rRef" ${o.ref?"checked":""} ${o.photos?"":"disabled"}><span>If there's no photo of mine, use the reference image — clearly labelled as not my coin</span></label>
+  <label class="check-inline"><input type="checkbox" id="rEach" ${o.each!==false?"checked":""} ${o.photos?"":"disabled"}><span>For sets, also show a picture of each coin in the set</span></label>
   <label class="check-inline"><input type="checkbox" id="rSold" ${o.sold?"checked":""}><span>Include sold and traded coins</span></label>
   <div class="field"><label for="rBy">Prepared for (optional)</label><input id="rBy" value="${esc(o.by)}" placeholder="e.g. Home &amp; contents insurer"></div>
   ${o.photos&&none.length?`<div class="todo"><span><b>${none.length} coin${none.length===1?" has":"s have"} no photos of your own.</b> ${o.ref?"They'll use labelled reference images where there is one.":"They'll show “No owner photo”."}</span><button type="button" class="btn sm" data-shownophoto>Show them</button></div>`:""}
@@ -894,7 +895,7 @@ async function makeReport(){
     let pics=[], isRef=false;
     if(o.photos){ let cand=pickN(ownForReport(c),o.two?2:1); if(!cand.length&&o.ref){ cand=pickN(refForReport(c),o.two?2:1); isRef=cand.length>0; } for(const p of cand){ const dt=await imgData(p); if(dt) pics.push(dt); } if(!pics.length) isRef=false; if(isRef) anyRef=true; }
     const det=[c.denom,c.year,c.mint&&c.mint!=="None"?"Mint "+c.mint:"",c.packaging,c.isSet?"Set of "+setSize(c):"",c.serial?"Serial "+c.serial:""].filter(Boolean).join(" · ");
-    const items=c.isSet?(c.setItems||[]):[]; let contains=items.length?"Contains: "+items.map(it=>it.title||"").filter(Boolean).join("; "):""; if(contains.length>240) contains=contains.slice(0,237)+"...";
+    const items=c.isSet?(c.setItems||[]):[]; const icom=setCommon(items); let contains=items.length?"Contains: "+items.map(it=>setItemLabel(it,icom)||it.title||"").filter(Boolean).join("; "):""; if(contains.length>240) contains=contains.slice(0,237)+"...";
     doc.setFont("helvetica","bold"); doc.setFontSize(9); const tl=doc.splitTextToSize(pdfTxt(titleOf(c)),coinW); doc.setFont("helvetica","normal");
     const gtxt=gradeText(c)||({"Uncirculated":"UNC","Frosted uncirculated":"Frosted UNC","Circulating":"Circulating","Specimen":"Specimen","Proof":"Proof"}[c.finish]||""); doc.setFontSize(8.5); const gl=doc.splitTextToSize(pdfTxt(gtxt),16);
     doc.setFontSize(8); const dl=det?doc.splitTextToSize(pdfTxt(det),coinW):[]; const cl=contains?doc.splitTextToSize(pdfTxt(contains),coinW):[]; const rl=isRef?doc.splitTextToSize("Photo: reference image - not the owner's coin",coinW):[]; const kl=doc.splitTextToSize(pdfTxt(c.storage||""),keptW);
@@ -909,7 +910,15 @@ async function makeReport(){
     doc.text(gl,x,y+4); x+=18;
     for(const [val,w] of [[String(qtyOf(c)),10],[pa!=null?aud(pa):"",21],[blank(c.value)?"":aud(c.value),21]]){ doc.text(pdfTxt(val),x,y+4); x+=w; }
     doc.setFontSize(8); doc.text(kl,x,y+4);
-    y+=h; doc.setDrawColor(225,228,236); doc.line(M,y,W-M,y); y+=1;
+    y+=h;
+    /* sets: a picture of each coin in the set, with its name */
+    if(o.photos&&o.each!==false&&items.length>1){ const com=setCommon(items), x0=M+1.5+PW, CW=22, per=Math.max(1,Math.floor((W-M-x0)/CW)); const cells=[];
+      for(const it of items){ let dt=null; for(const ph of bestOf(it.photos,"mine").sort((a,b)=>(picKind(a)==="numista")-(picKind(b)==="numista"))){ dt=await imgData(ph); if(dt) break; } cells.push({dt,label:setItemLabel(it,com)||it.title||"Coin"}); }
+      if(cells.some(c=>c.dt)){ for(let i=0;i<cells.length;i+=per){ const rowc=cells.slice(i,i+per); if(y+22>BOT){ doc.addPage(); y=M; head(); }
+          rowc.forEach((c,k)=>{ const cx=x0+k*CW; if(c.dt) doc.addImage(c.dt,"JPEG",cx+3,y+1,14,14); else { doc.setDrawColor(210,214,222); doc.rect(cx+3,y+1,14,14); doc.setFontSize(5.5); doc.setTextColor(150,150,150); doc.text("no photo",cx+10,y+8.5,{align:"center"}); }
+            doc.setFontSize(6.5); doc.setTextColor(70,70,70); doc.text(doc.splitTextToSize(pdfTxt(c.label),CW-1).slice(0,2),cx+10,y+17.5,{align:"center"}); });
+          doc.setTextColor(20,20,20); y+=22; } } }
+    doc.setDrawColor(225,228,236); doc.line(M,y,W-M,y); y+=1;
   }
   if(y+12>BOT){ doc.addPage(); y=M; }
   doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.text(pdfTxt(`Totals: ${nCoins} coins  ·  Total cost ${aud(Math.round(totP))||"$0"}  ·  Current value ${aud(Math.round(totV))||"$0"}`),M,y+6);
@@ -1254,7 +1263,7 @@ document.addEventListener("click",async e=>{
   if("nssave" in d){ const s={...nsSet(),key:$("#nsKeyIn").value.trim(),ausOnly:$("#nsAusSet").checked}; await dbPut("settings",s); await reload(); render(); toast(s.key?"Numista key saved":"Numista key removed"); return; }
   if("nstest" in d){ $("#nsStat").textContent="Testing…"; try{ const code=await nsAusCode(); const j=await nsFetch(`/types?q=${encodeURIComponent("2 dollars")}&category=coin&count=1${code?"&issuer="+encodeURIComponent(code):""}`); $("#nsStat").textContent=`Working ✓ — Numista found ${fmtNum(j.count||0)} ${code?"Australian ":""}matches for "2 dollars"${code?"":" (Australia filter not found — results are filtered in the app instead)"}. ${nsUsage()}`; }catch(err){ $("#nsStat").textContent=err.message||String(err); } return; }
   /* more */
-  if("mkreport" in d){ S.rep.photos=$("#rPhotos").checked; S.rep.two=$("#rTwo").checked; S.rep.ref=$("#rRef").checked; S.rep.sold=$("#rSold").checked; S.rep.by=$("#rBy").value.trim(); b.disabled=true; try{ await makeReport(); }catch(err){ toast("Couldn't create the report: "+(err&&err.message||err)); } b.disabled=false; return; }
+  if("mkreport" in d){ S.rep.photos=$("#rPhotos").checked; S.rep.two=$("#rTwo").checked; S.rep.ref=$("#rRef").checked; S.rep.sold=$("#rSold").checked; S.rep.each=$("#rEach").checked; S.rep.by=$("#rBy").value.trim(); b.disabled=true; try{ await makeReport(); }catch(err){ toast("Couldn't create the report: "+(err&&err.message||err)); } b.disabled=false; return; }
   if("mkck" in d){ b.disabled=true; try{ await makeChecklist(); }catch(err){ toast("Couldn't create the checklist: "+(err&&err.message||err)); } b.disabled=false; return; }
   if("sharerep" in d){ try{ await navigator.share({files:[S._repFile],title:"Coin collection report"}); }catch(err){ if(err&&err.name!=="AbortError") toast("Couldn't share: "+(err.message||err)); } return; }
   if("copycsv" in d){ const ta=$("#csvText"); try{ await navigator.clipboard.writeText(ta.value); toast("CSV copied"); }catch{ ta.focus(); ta.select(); toast("Text selected — copy it from here"); } return; }
@@ -1293,7 +1302,7 @@ document.addEventListener("change",async e=>{
   if(el.dataset.ckd!=null){ const o=ckOpts(), k=el.dataset.ckd; o.off=o.off.filter(x=>x!==k); if(!el.checked) o.off.push(k); return; }
   if(el.id==="ckPic"){ ckOpts().pic=el.value; return; }
   if(["ckSplit","ckWants","ckMoney","ckPhotos","ckSold"].includes(el.id)){ ckOpts()[{ckSplit:"split",ckWants:"wants",ckMoney:"money",ckPhotos:"photos",ckSold:"sold"}[el.id]]=el.checked; const sy=scrollY; render(); scrollTo(0,sy); return; }
-  if(["rPhotos","rTwo","rRef","rSold"].includes(el.id)){ S.rep[{rPhotos:"photos",rTwo:"two",rRef:"ref",rSold:"sold"}[el.id]]=el.checked; const by=$("#rBy"); if(by) S.rep.by=by.value.trim(); render(); return; }
+  if(["rPhotos","rTwo","rRef","rSold","rEach"].includes(el.id)){ S.rep[{rPhotos:"photos",rTwo:"two",rRef:"ref",rSold:"sold",rEach:"each"}[el.id]]=el.checked; const by=$("#rBy"); if(by) S.rep.by=by.value.trim(); render(); return; }
   if(el.id==="rcIn"&&el.files.length){ const fs=[...el.files]; el.value=""; if(S._rcMode==="edit") await addReceiptToEdit(fs); else await createStdReceipt(fs[0]); return; }
   if(el.id==="dbxWifi"){ await setDbx({wifiOnly:el.checked}); refreshDbxPanel(); return; }
   if(el.id==="sortSel"){ view().sort=el.value; saveMeta(); const r=$("#results"); r.innerHTML=resultsHTML(); hydrateImages(r); return; }
