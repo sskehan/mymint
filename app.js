@@ -280,7 +280,7 @@ const backMore=`<button type="button" class="btn sm" data-more="" style="align-s
 function menuIco(bg,path){ return `<span class="ico" style="background:${bg};width:40px;height:40px;border-radius:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px">${path}</svg></span>`; }
 function viewMore(){
   const mv=S.moreView;
-  if(mv==="backup") return viewBackup(); if(mv==="numista") return viewNumista(); if(mv==="stats") return viewStats(); if(mv==="export") return viewExport(); if(mv==="report") return viewReport(); if(mv==="about") return viewAbout(); if(mv==="guide") return viewGuide(); if(mv==="receipts") return viewReceipts();
+  if(mv==="backup") return viewBackup(); if(mv==="numista") return viewNumista(); if(mv==="stats") return viewStats(); if(mv==="export") return viewExport(); if(mv==="report") return viewReport(); if(mv==="checklist") return viewChecklist(); if(mv==="about") return viewAbout(); if(mv==="guide") return viewGuide(); if(mv==="receipts") return viewReceipts();
   const k=nsKey();
   return `<section class="view"><div class="hero" style="padding-top:12px"><h1 style="color:#fff;font-size:22px">More</h1></div><div class="menu">
     <button type="button" data-more="backup">${menuIco("#4338CA",'<path d="M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/>')}<span class="tx"><b>Backup &amp; restore</b><span class="muted small">${S.readOnly?"View only":dbxOn()?"Kept in Dropbox":"Connect Dropbox, or make a backup file"}${S.meta.changes?` · ${S.meta.changes} not backed up`:""}</span></span></button>
@@ -288,6 +288,7 @@ function viewMore(){
     <button type="button" data-more="guide">${menuIco("#2563EB",'<path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/>')}<span class="tx"><b>Collector's guide</b><span class="muted small">Grades, finishes, mint marks, care</span></span></button>
     <button type="button" data-more="receipts">${menuIco("#0F766E",'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>')}<span class="tx"><b>Receipts &amp; documents</b><span class="muted small">${S.receipts.length?S.receipts.length+" receipt"+(S.receipts.length===1?"":"s"):"Photos and PDFs of your purchases"}</span></span></button>
     <button type="button" data-more="stats">${menuIco("#D97706",'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>')}<span class="tx"><b>Statistics</b><span class="muted small">Totals, value, by denomination</span></span></button>
+    <button type="button" data-more="checklist">${menuIco("#059669",'<path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/>')}<span class="tx"><b>Collection checklist</b><span class="muted small">By denomination, with your wants — for coin fairs</span></span></button>
     <button type="button" data-more="report">${menuIco("#7C3AED",'<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>')}<span class="tx"><b>Insurance report</b><span class="muted small">PDF listing with photos and values</span></span></button>
     <button type="button" data-more="export">${menuIco("#0284C7",'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>')}<span class="tx"><b>Export CSV</b><span class="muted small">Spreadsheet copy for Excel</span></span></button>
     <button type="button" data-more="about">${menuIco("#475569",'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>')}<span class="tx"><b>About MyMint</b><span class="muted small">Version ${APP_VERSION} · where your data lives</span></span></button>
@@ -882,6 +883,100 @@ async function makeReport(){
   if(out) out.innerHTML=`<a class="btn primary" href="${url}" download="${esc(name)}">Save PDF to phone</a><a class="btn" href="${url}" target="_blank" rel="noopener">Open PDF</a>${canShare?`<button type="button" class="btn" data-sharerep>Share…</button>`:""}<span class="muted small">${pages} page${pages===1?"":"s"} · ${(blob.size/1024).toFixed(0)} KB</span>`;
 }
 
+/* ================= collection checklist (by denomination, for coin fairs) ================= */
+const ckOpts=()=>S.ck||(S.ck={off:[],split:true,wants:true,money:true,photos:true,sold:false});
+const dKey=k=>k&&DENOMS.some(d=>d.k===k)?k:"Other";
+function ckRows(o){ const rows=[];
+  for(const c of S.coins.filter(c=>o.sold||isOwned(c))){ const items=c.isSet?(c.setItems||[]):[];
+    if(o.split&&items.length){ const sn=nameParts(c).main; items.forEach((it,i)=>rows.push({c,it,denom:dKey(it.denom||c.denom),year:it.year||c.year,name:nameParts(it).main,sub:[nameParts(it).main.startsWith(sn)?`Part of a set of ${items.length}`:"In set: "+sn,it.mintage?"Mintage "+fmtNum(it.mintage):""],mint:it.mint||c.mint,first:i===0})); }
+    else rows.push({c,denom:dKey(c.denom),year:c.year,name:nameParts(c).main,sub:[c.series&&!nameParts(c).main.toLowerCase().includes(String(c.series).toLowerCase())?c.series:"",c.isSet?`Set of ${setSize(c)}`+(items.length?": "+items.map(it=>setItemLabel(it,setCommon(items))).join(", "):""):"",c.mintage?"Mintage "+fmtNum(c.mintage):""],mint:c.mint}); }
+  for(const r of rows){ const c=r.c; r.sub=[...r.sub,c.variety,c.colourised?"Coloured":"",isOwned(c)?"":c.status].filter(Boolean); if(r.mint==="None") r.mint=""; r.grade=gradeText(c)||({"Uncirculated":"UNC","Frosted uncirculated":"Frosted UNC","Proof":"Proof","Specimen":"Specimen","Circulating":"Circ."}[c.finish]||""); r.pack=c.packaging||""; r.qty=qtyOf(c); }
+  return rows; }
+function ckSections(o){ const rows=ckRows(o), wants=o.wants?S.wanted.filter(w=>!w.got):[]; const m=new Map();
+  const get=k=>{ if(!m.has(k)) m.set(k,{k,rows:[],wants:[]}); return m.get(k); };
+  for(const r of rows) get(r.denom).rows.push(r); for(const w of wants) get(dKey(w.denom)).wants.push(w);
+  const yr=x=>{ const n=String(x.year||"").match(/\d{4}/); return n?+n[0]:9999; };
+  const secs=[...m.values()].sort((a,b)=>DENOMS.findIndex(d=>d.k===a.k)-DENOMS.findIndex(d=>d.k===b.k));
+  for(const s of secs){ s.rows.sort((a,b)=>yr(a)-yr(b)||a.name.localeCompare(b.name)); s.wants.sort((a,b)=>yr(a)-yr(b)); const seen=new Set(); for(const r of s.rows) if(r.it){ r.first=!seen.has(r.c.id); seen.add(r.c.id); }
+    s.coins=s.rows.reduce((a,r)=>a+r.qty*(r.it||!r.c.isSet?1:setSize(r.c)),0);
+    s.value=s.rows.reduce((a,r)=>a+(r.it&&!r.first||blank(r.c.value)?0:+r.c.value*r.qty),0);
+    s.cost=s.rows.reduce((a,r)=>{ const p=costEach(r.c); return a+(r.it&&!r.first||p==null?0:p*r.qty); },0); }
+  return secs; }
+const dLabel=k=>({"$10":"$10 coins","$5":"$5 coins","$2":"$2 coins","$1":"$1 coins","50c":"50c coins","20c":"20c coins","10c":"10c coins","5c":"5c coins","2c":"2c coins","1c":"1c coins","Crown":"Crowns","Florin":"Florins","Shilling":"Shillings","Sixpence":"Sixpences","Threepence":"Threepences","Penny":"Pennies","Halfpenny":"Halfpennies","Other":"Other / not set"}[k]||k);
+function viewChecklist(){ const o=ckOpts(); const secs=ckSections(o);
+  return `<section class="view">${backMore}<div class="panel"><h3>Collection checklist</h3><p class="m0">Everything you have, sorted by denomination then year, with the wants you're still hunting for under each one. Save the PDF to your phone and it works offline at a coin fair.</p>
+  <div class="flabel" style="margin-top:4px">Denominations</div>
+  <div class="ckd">${secs.map(s=>`<label class="check-inline"><input type="checkbox" data-ckd="${esc(s.k)}" ${o.off.includes(s.k)?"":"checked"}><span><b>${esc(dLabel(s.k))}</b> <span class="muted small">${s.coins} owned${s.wants.length?` · ${s.wants.length} wanted`:""}</span></span></label>`).join("")||`<p class="m0 muted small">No coins yet.</p>`}</div>
+  <div class="flabel" style="margin-top:4px">Include</div>
+  <label class="check-inline"><input type="checkbox" id="ckSplit" ${o.split?"checked":""}><span>List each coin in a set on its own line</span></label>
+  <label class="check-inline"><input type="checkbox" id="ckWants" ${o.wants?"checked":""}><span>"Still looking for" — my wants list, with the most I'll pay</span></label>
+  <label class="check-inline"><input type="checkbox" id="ckMoney" ${o.money?"checked":""}><span>What I paid and current value</span></label>
+  <label class="check-inline"><input type="checkbox" id="ckPhotos" ${o.photos?"checked":""}><span>Picture of each coin — the Numista reverse (design side)</span></label>
+  <label class="check-inline"><input type="checkbox" id="ckSold" ${o.sold?"checked":""}><span>Include sold and traded coins</span></label>
+  <button type="button" class="btn primary" data-mkck>Create PDF</button><div class="row" id="repOut"></div></div></section>`; }
+/* checklist picture: the Numista reverse (design side); otherwise another reference reverse, then my own reverse */
+function ckPhoto(r){ const rev=ph=>{ ph=ph||[]; return ph.find(p=>!p.mine&&p.side==="Reverse"&&p.source==="Numista")||ph.find(p=>!p.mine&&p.side==="Reverse")||ph.find(p=>p.mine&&p.side==="Reverse")||null; };
+  if(r.it) return rev(r.it.photos); return rev(r.c.photos)||((r.c.setItems||[]).map(it=>rev(it.photos)).find(Boolean))||null; }
+async function makeChecklist(){
+  const o=ckOpts(), out=$("#repOut"), say=m=>{ if(out) out.innerHTML=`<span class="muted small">${esc(m)}</span>`; };
+  const secs=ckSections(o).filter(s=>!o.off.includes(s.k)&&(s.rows.length||s.wants.length)); if(!secs.length){ say("Tick at least one denomination."); return; }
+  say("Making the PDF…"); await loadJsPDF();
+  const { jsPDF }=window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210, M=14, BOT=283, IW=W-2*M;
+  const PH=o.photos?11:0, MON=o.money?29:0;
+  const cols=[...(o.photos?[["",PH]]:[]),["Year",13],["Coin",IW-PH-13-14-17-21-9-MON],["Mint",14],["Grade",17],["Pack",21],["Qty",9],...(o.money?[["Paid",14.5],["Value",14.5]]:[])];
+  const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+  let y=M;
+  const tC=secs.reduce((a,s)=>a+s.coins,0), tR=secs.reduce((a,s)=>a+s.rows.length,0), tV=secs.reduce((a,s)=>a+s.value,0), tP=secs.reduce((a,s)=>a+s.cost,0), tW=secs.reduce((a,s)=>a+s.wants.length,0);
+  doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(49,46,129); doc.text("Coin collection checklist",M,y+5); y+=10;
+  doc.setFont("helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
+  doc.text(pdfTxt(`${fmtDate(todayISO())}  ·  ${tC} coins on ${tR} lines${o.wants?`  ·  ${tW} wanted`:""}${o.money?`  ·  Paid ${aud(Math.round(tP))||"$0"}  ·  Value ${aud(Math.round(tV))||"$0"}`:""}`),M,y+3); y+=8;
+  /* summary */
+  doc.setFillColor(238,242,255); doc.rect(M,y,IW,6.5,"F"); doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(49,46,129);
+  const sc=[["Denomination",60],["Lines",22],["Coins",22],["Wanted",22],...(o.money?[["Paid",28],["Value",28]]:[])];
+  let x=M+1.5; for(const [h,w] of sc){ doc.text(h,x,y+4.5); x+=w; } y+=7.5; doc.setFont("helvetica","normal"); doc.setTextColor(20,20,20);
+  for(const s of secs){ x=M+1.5; const g=GROUPS[dInfo(s.k).grp]||GROUPS.other; doc.setFillColor(...hex(g.solid)); doc.circle(x+1.2,y+2.6,1.2,"F");
+    for(const [v,w] of [[dLabel(s.k),60],[String(s.rows.length),22],[String(s.coins),22],[String(s.wants.length||""),22],...(o.money?[[s.cost?aud(Math.round(s.cost)):"",28],[s.value?aud(Math.round(s.value)):"",28]]:[])]){ doc.text(pdfTxt(v),x+(w===60?4:0),y+3.8); x+=w; }
+    y+=5.4; }
+  doc.setDrawColor(225,228,236); doc.line(M,y,W-M,y); y+=5;
+  const head=()=>{ doc.setFillColor(245,246,251); doc.rect(M,y,IW,6,"F"); doc.setFont("helvetica","bold"); doc.setFontSize(7.8); doc.setTextColor(75,85,99); let x=M+1.5; for(const [h,w] of cols){ doc.text(h,x,y+4.2); x+=w; } y+=7; doc.setFont("helvetica","normal"); doc.setTextColor(20,20,20); };
+  const band=(s,cont)=>{ const g=GROUPS[dInfo(s.k).grp]||GROUPS.other; doc.setFillColor(...hex(g.solid)); doc.roundedRect(M,y,IW,8,1.5,1.5,"F"); doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(255,255,255);
+    doc.text(pdfTxt(dLabel(s.k)+(cont?" (continued)":"")),M+3,y+5.6); doc.setFontSize(8.5); doc.setFont("helvetica","normal");
+    doc.text(pdfTxt(`${s.coins} coin${s.coins===1?"":"s"}${s.wants.length?` · ${s.wants.length} wanted`:""}${o.money&&s.value?` · value ${aud(Math.round(s.value))}`:""}`),W-M-3,y+5.6,{align:"right"}); y+=10; doc.setTextColor(20,20,20); };
+  let n=0; const total=secs.reduce((a,s)=>a+s.rows.length,0);
+  for(const s of secs){
+    if(y+30>BOT){ doc.addPage(); y=M; }
+    band(s,false);
+    if(s.rows.length){ head();
+      for(const r of s.rows){ if(out&&++n%5===0) say(`Adding ${n} of ${total}…`);
+        const cw=cols.find(c=>c[0]==="Coin")[1]-3;
+        doc.setFont("helvetica","bold"); doc.setFontSize(8.8); const tl=doc.splitTextToSize(pdfTxt(r.name),cw); doc.setFont("helvetica","normal"); doc.setFontSize(7.6); const sl=r.sub.length?doc.splitTextToSize(pdfTxt(r.sub.join(" · ")),cw):[];
+        const pl=doc.splitTextToSize(pdfTxt(r.pack),20), ml=doc.splitTextToSize(pdfTxt(r.mint||""),13); const h=Math.max(o.photos?12:7,tl.length*3.7+sl.length*3.2+3,pl.length*3.2+3,ml.length*3.2+3,String(r.year||"").length>6?9:0);
+        if(y+h>BOT){ doc.addPage(); y=M; band(s,true); head(); }
+        let x=M+1.5;
+        if(o.photos){ const ph=ckPhoto(r); const dt=ph?await imgData(ph):null; if(dt) doc.addImage(dt,"JPEG",x-0.5,y+0.5,10,10); x+=PH; }
+        doc.setFontSize(8.8); doc.setFont("helvetica","bold"); { let yt=pdfTxt(String(r.year||"-")); if(doc.getTextWidth(yt)>12) yt=yt.replace(/\s*-\s*/,"-\n"); doc.text(yt.split("\n"),x,y+4); } x+=13;
+        doc.text(tl,x,y+4); doc.setFont("helvetica","normal"); if(sl.length){ doc.setFontSize(7.6); doc.setTextColor(95,95,95); doc.text(sl,x,y+4+tl.length*3.7); doc.setTextColor(20,20,20); } x+=cols.find(c=>c[0]==="Coin")[1];
+        doc.setFontSize(7.6); doc.text(doc.splitTextToSize(pdfTxt(r.mint||""),13),x,y+4); doc.setFontSize(8.3); x+=14; doc.text(pdfTxt(r.grade),x,y+4); x+=17; doc.setFontSize(7.6); doc.text(pl,x,y+4); x+=21; doc.setFontSize(8.3);
+        doc.text(r.qty>1?"x"+r.qty:"1",x,y+4); x+=9;
+        if(o.money){ if(r.it&&!r.first){ doc.setTextColor(150,150,150); doc.text("in set",x,y+4); doc.setTextColor(20,20,20); } else { const p=costEach(r.c); doc.text(pdfTxt(p!=null?aud(p*(r.it?1:1)):""),x,y+4); x+=14.5; doc.text(pdfTxt(blank(r.c.value)?"":aud(r.c.value)),x,y+4); if(r.it){ doc.setFontSize(6.5); doc.setTextColor(150,150,150); doc.text("whole set",x-14.5,y+7.2); doc.setTextColor(20,20,20); } } }
+        y+=h; doc.setDrawColor(232,234,240); doc.line(M,y,W-M,y); y+=0.8; }
+    }
+    if(s.wants.length){ if(y+16>BOT){ doc.addPage(); y=M; band(s,true); }
+      doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(180,83,9); doc.text(s.rows.length?"Still looking for":"Wanted - none owned yet",M+1.5,y+4.5); y+=6.5; doc.setTextColor(20,20,20);
+      for(const w of s.wants){ doc.setFontSize(8.5); doc.setFont("helvetica","normal"); const wl=doc.splitTextToSize(pdfTxt([w.title,w.series&&!String(w.title||"").includes(w.series)?w.series:"",w.notes].filter(Boolean).join(" · ")),IW-13-34-8); const h=wl.length*3.6+2.5;
+        if(y+h>BOT){ doc.addPage(); y=M; band(s,true); }
+        doc.setDrawColor(180,83,9); doc.rect(M+1.5,y+1.2,3,3); doc.setFont("helvetica","bold"); doc.text(pdfTxt(String(w.year||"")),M+7,y+4); doc.setFont("helvetica","normal"); doc.text(wl,M+20,y+4);
+        if(!blank(w.target)) doc.text(pdfTxt("up to "+aud(w.target)),W-M-2,y+4,{align:"right"}); y+=h; }
+    }
+    y+=5;
+  }
+  const pages=doc.getNumberOfPages(); for(let i=1;i<=pages;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(120,120,120); doc.text(pdfTxt(`${o.money?"Paid = price each including a share of postage. Value = my own estimate, each. ":""}Mint = mint or privy mark. MyMint ${APP_VERSION}  ·  ${fmtDate(todayISO())}  ·  Page ${i} of ${pages}`),M,292,{maxWidth:IW}); }
+  const blob=doc.output("blob"), name=`mymint-checklist-${todayISO()}.pdf`, url=URL.createObjectURL(blob);
+  const canShare=!!(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:"application/pdf"})]}));
+  S._repFile=new File([blob],name,{type:"application/pdf"});
+  if(out) out.innerHTML=`<a class="btn primary" href="${url}" download="${esc(name)}">Save PDF to phone</a><a class="btn" href="${url}" target="_blank" rel="noopener">Open PDF</a>${canShare?`<button type="button" class="btn" data-sharerep>Share…</button>`:""}<span class="muted small">${pages} page${pages===1?"":"s"} · ${(blob.size/1024).toFixed(0)} KB</span>`;
+}
+
 /* ================= cost: price + share of receipt postage ================= */
 const covOf=(c,rid)=>{ const q=qtyOf(c); const v=c.receiptCover&&c.receiptCover[rid]; return v?Math.min(q,Math.max(1,parseInt(v,10)||q)):q; };
 function rcUnits(r){ return rcCoins(r.id).reduce((a,c)=>a+covOf(c,r.id),0); }
@@ -1110,6 +1205,7 @@ document.addEventListener("click",async e=>{
   if("nstest" in d){ $("#nsStat").textContent="Testing…"; try{ const code=await nsAusCode(); const j=await nsFetch(`/types?q=${encodeURIComponent("2 dollars")}&category=coin&count=1${code?"&issuer="+encodeURIComponent(code):""}`); $("#nsStat").textContent=`Working ✓ — Numista found ${fmtNum(j.count||0)} ${code?"Australian ":""}matches for "2 dollars"${code?"":" (Australia filter not found — results are filtered in the app instead)"}. ${nsUsage()}`; }catch(err){ $("#nsStat").textContent=err.message||String(err); } return; }
   /* more */
   if("mkreport" in d){ S.rep.photos=$("#rPhotos").checked; S.rep.two=$("#rTwo").checked; S.rep.ref=$("#rRef").checked; S.rep.sold=$("#rSold").checked; S.rep.by=$("#rBy").value.trim(); b.disabled=true; try{ await makeReport(); }catch(err){ toast("Couldn't create the report: "+(err&&err.message||err)); } b.disabled=false; return; }
+  if("mkck" in d){ b.disabled=true; try{ await makeChecklist(); }catch(err){ toast("Couldn't create the checklist: "+(err&&err.message||err)); } b.disabled=false; return; }
   if("sharerep" in d){ try{ await navigator.share({files:[S._repFile],title:"Coin collection report"}); }catch(err){ if(err&&err.name!=="AbortError") toast("Couldn't share: "+(err.message||err)); } return; }
   if("copycsv" in d){ const ta=$("#csvText"); try{ await navigator.clipboard.writeText(ta.value); toast("CSV copied"); }catch{ ta.focus(); ta.select(); toast("Text selected — copy it from here"); } return; }
   if("backup" in d){ b.disabled=true; try{ await makeBackup(); }catch(err){ toast("Backup failed: "+(err&&err.message||err)); } b.disabled=false; return; }
@@ -1144,6 +1240,8 @@ document.addEventListener("change",async e=>{
   if(el.dataset.rck){ const t=topV(); if(el.checked) t.sel.add(el.dataset.rck); else t.sel.delete(el.dataset.rck); return; }
   if(el.id==="rlFill"){ topV().fill=el.checked; return; }
   if(el.dataset.rnf){ const t=topV(); const r=((t&&t.newReceipts)||[]).find(x=>x.id===el.dataset.rid); if(r) r[el.dataset.rnf]=el.value; return; }
+  if(el.dataset.ckd!=null){ const o=ckOpts(), k=el.dataset.ckd; o.off=o.off.filter(x=>x!==k); if(!el.checked) o.off.push(k); return; }
+  if(["ckSplit","ckWants","ckMoney","ckPhotos","ckSold"].includes(el.id)){ ckOpts()[{ckSplit:"split",ckWants:"wants",ckMoney:"money",ckPhotos:"photos",ckSold:"sold"}[el.id]]=el.checked; const sy=scrollY; render(); scrollTo(0,sy); return; }
   if(["rPhotos","rTwo","rRef","rSold"].includes(el.id)){ S.rep[{rPhotos:"photos",rTwo:"two",rRef:"ref",rSold:"sold"}[el.id]]=el.checked; const by=$("#rBy"); if(by) S.rep.by=by.value.trim(); render(); return; }
   if(el.id==="rcIn"&&el.files.length){ const fs=[...el.files]; el.value=""; if(S._rcMode==="edit") await addReceiptToEdit(fs); else await createStdReceipt(fs[0]); return; }
   if(el.id==="dbxWifi"){ await setDbx({wifiOnly:el.checked}); refreshDbxPanel(); return; }
