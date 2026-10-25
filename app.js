@@ -16,7 +16,7 @@ const DENOMS=[
   {k:"2c",face:"2c",grp:"bronze",metal:"copper"},{k:"1c",face:"1c",grp:"bronze",metal:"copper"},
   {k:"Crown",face:"5/-",grp:"pre",metal:"silver"},{k:"Florin",face:"2/-",grp:"pre",metal:"silver"},{k:"Shilling",face:"1/-",grp:"pre",metal:"silver"},
   {k:"Sixpence",face:"6d",grp:"pre",metal:"silver"},{k:"Threepence",face:"3d",grp:"pre",metal:"silver"},{k:"Penny",face:"1d",grp:"pre",metal:"copper"},{k:"Halfpenny",face:"½d",grp:"pre",metal:"copper"},
-  {k:"Other",face:"?",grp:"other",metal:"silver"}];
+  {k:"Mixed",face:"Mix",grp:"other",metal:"gold"},{k:"Other",face:"?",grp:"other",metal:"silver"}];
 const GROUPS={
   big:{label:"$5 & up",solid:"#DB2777",tint:"#FCE7F3",text:"#9D174D",badge:"$5+"},
   two:{label:"$2 coins",solid:"#D97706",tint:"#FFF4DB",text:"#92400E",badge:"$2"},
@@ -43,6 +43,8 @@ const MINTS=["None","C","S","M","P","B","A","Privy mark"];
 
 const dInfo=k=>DENOMS.find(d=>d.k===k)||DENOMS[DENOMS.length-1];
 const grpOf=c=>c.denom?dInfo(c.denom).grp:"other";
+/* a set counts under its own denomination and every denomination of the coins in it */
+const denomsOf=c=>[...new Set([c.denom||"",...(c.isSet?(c.setItems||[]).map(it=>it.denom).filter(Boolean):[])])].filter(Boolean).concat(c.denom?[]:[""]);
 const themeOf=c=>GROUPS[grpOf(c)];
 const isOwned=c=>!["Sold","Traded"].includes(c.status);
 const qtyOf=c=>Math.max(1,+c.qty||1);
@@ -77,7 +79,7 @@ function coverOf(c){ const ph=c.photos||[]; return ph.find(p=>p.id===c.coverId)|
 function todoOf(c){ const t=[]; if(blank(c.year)) t.push("year"); if(!c.grade&&c.finish!=="Proof") t.push("grade"); if(!mine(c).length) t.push("your photos"); if(blank(c.storage)) t.push("storage location"); if(c.acqHow==="Bought"&&blank(c.price)) t.push("price paid"); return t; }
 function imgTag(p,attrs){ return p.url?`<img src="${esc(p.url)}" alt="" referrerpolicy="no-referrer" onerror="this.style.opacity=0" ${attrs||""}>`:`<img data-fid="${esc(p.id)}" alt="" ${attrs||""}>`; }
 function drawnCoin(c){ const d=dInfo(c.denom); return `<div class="coin m-${d.metal} ${d.shape||""}">${esc(c.denom?d.face:"?")}</div>`; }
-function faceHTML(c){ const p=coverOf(c); return `<div class="face">${p?imgTag(p):drawnCoin(c)}</div>`; }
+function faceHTML(c){ const p=coverOf(c)||(c.isSet&&(c.setItems||[]).map(it=>{ const ph=it.photos||[]; return ph.find(x=>x.side==="Reverse"&&!x.url)||ph.find(x=>x.side==="Reverse")||ph[0]; }).find(Boolean))||null; return `<div class="face">${p?imgTag(p):drawnCoin(c)}</div>`; }
 const fmtNum=n=>blank(n)?"":isNaN(+n)?String(n):Number(n).toLocaleString("en-AU");
 const unit=(v,u)=>blank(v)?"":`${v}${/[a-z]$/i.test(String(v))?"":" "+u}`;
 
@@ -102,8 +104,8 @@ function matchQuery(c,q){
 function passFilters(c,f,skip){
   const sk=k=>skip===k;
   if(f.status==="owned"&&!isOwned(c)) return false; if(f.status==="sold"&&isOwned(c)) return false;
-  if(!sk("grp")&&f.grp.length&&!f.grp.includes(grpOf(c))) return false;
-  if(f.denom&&c.denom!==f.denom) return false;
+  if(!sk("grp")&&f.grp.length&&!denomsOf(c).some(k=>f.grp.includes(dInfo(k).grp))) return false;
+  if(f.denom&&!denomsOf(c).includes(f.denom)) return false;
   if(f.coll&&collOf(c)!==f.coll) return false;
   if(f.series&&(c.series||"")!==f.series) return false;
   const y=yearNum(c); if(f.yFrom&&(y==null||y<+f.yFrom)) return false; if(f.yTo&&(y==null||y>+f.yTo)) return false;
@@ -619,6 +621,7 @@ function drawPhotos(){ const d=topV(); const el=$("#phSec"); if(el){ el.innerHTM
 function readForm(){ const d=topV(); if(!d||d.kind!=="edit") return null; const c=d.draft;
   document.querySelectorAll("#sheet [data-f]").forEach(el=>{ c[el.dataset.f]=el.value; });
   const s=$("#f_isSet"); if(s) c.isSet=s.checked;
+  document.querySelectorAll("#sheet [data-sif]").forEach(el=>{ const it=(c.setItems||[])[+el.dataset.sii]; if(!it) return; const v=el.value.trim(); if(v) it[el.dataset.sif]=v; else delete it[el.dataset.sif]; });
   if(d.packOther){ const po=$("#f_packOther"); if(po){ d.packOtherText=po.value.trim(); c.packaging=d.packOtherText; } }
   return c; }
 function nextSide(c){ const used=new Set((c.photos||[]).filter(p=>p.mine).map(p=>p.side)); return ["Obverse","Reverse","Card / packaging"].find(s=>!used.has(s))||"Other"; }
@@ -649,6 +652,7 @@ async function saveCoin(){
   const nsid=($("#f_nsid")||{}).value; if(nsid&&(!c.ns||String(c.ns.id)!==nsid.trim())&&/^\d+$/.test(nsid.trim())) c.ns={id:+nsid.trim(),url:`https://en.numista.com/${nsid.trim()}`};
   if(!c.denom&&blank(c.title)&&blank(c.series)){ toast("Pick a denomination or give it a name first"); return; }
   if(!blank(c.year)&&!/^\d{4}(\s*[-–]\s*\d{4})?$/.test(String(c.year).trim())){ toast("Year should look like 2022 (or 2020-2021)"); return; }
+  if(c.isSet){ const ds=[...new Set((c.setItems||[]).map(it=>it.denom).filter(Boolean))]; if(ds.length>1&&(!c.denom||ds.includes(c.denom))) c.denom="Mixed"; else if(ds.length===1&&(!c.denom||c.denom==="Mixed")) c.denom=ds[0]; }
   clean(c);
   const prev=d.id?S.coins.find(x=>x.id===d.id):null;
   if(prev&&!blank(c.value)&&String(c.value)!==String(prev.value??"")&&!c.valueDate) c.valueDate=todayISO();
@@ -724,19 +728,35 @@ async function dropUnused(ids){ for(const id of new Set(ids)) if(id&&!fileInUse(
 /* ================= sets: the coins inside a set ================= */
 const pickKeys=(o,ks)=>{ const r={}; for(const k of ks) if(!blank(o[k])) r[k]=o[k]; return r; };
 function itemSub(it){ return [it.denom,it.year,it.mint&&it.mint!=="None"?"Mint "+it.mint:"",it.mintage?"Mintage "+fmtNum(it.mintage):""].filter(Boolean).join(" · "); }
-function itemFace(it,size,rev){ size=size||44; const ph=it.photos||[]; const p=ph.find(p=>p.side==="Reverse")||ph.find(p=>p.side==="Obverse")||ph[0]; return `<div class="face" style="--face:${size}px;width:${size}px;height:${size}px">${p?imgTag(p):drawnCoin({denom:it.denom})}</div>`; }
+function itemFace(it,size,rev){ size=size||44; const ph=it.photos||[]; const p=ph.find(p=>p.side==="Reverse"&&!p.url)||ph.find(p=>p.side==="Reverse")||ph.find(p=>p.side==="Obverse")||ph[0]; return `<div class="face" style="--face:${size}px;width:${size}px;height:${size}px">${p?imgTag(p):drawnCoin({denom:it.denom})}</div>`; }
 function setSec(d){ const c=d.draft, items=c.setItems||[];
   return `<div class="setin"><div class="flabel" style="display:flex;align-items:center;gap:8px">Coins in this set<span class="muted small" style="font-weight:600">${items.length?items.length+" listed":""}</span></div>
-  ${items.length?`<div class="sitems">${items.map((it,i)=>`<div class="sitem">${itemFace(it,44,true)}<span class="tx"><b>${esc(it.title||"Coin "+(i+1))}</b><span>${esc(itemSub(it)||"Added by hand")}</span></span><button type="button" class="btn sm ghost" data-sirm="${i}" aria-label="Remove ${esc(it.title||"coin")}">×</button></div>`).join("")}</div>`:`<p class="m0 muted small">Add each coin in the set — from Numista for its details and reference photos, or by hand.</p>`}
+  ${items.length?`<div class="sitems">${items.map((it,i)=>siRow(d,it,i,items.length)).join("")}</div>${items.length>1?`<p class="m0 muted small">Use ▲ ▼ to put the coins in order. Tap ✎ to change a coin's details or add its own picture.</p>`:""}`:`<p class="m0 muted small">Add each coin in the set — from Numista for its details and reference photos, or by hand.</p>`}
   <div class="row">${nsKey()?`<button type="button" class="btn primary" data-siadd>Add coin from Numista</button>`:""}<button type="button" class="btn" data-siman>${d.siManual?"Hide":"Add by hand"}</button></div>
   ${d.siManual?`<div class="grid2 siman"><div class="field full"><label for="si_title">Coin name</label><input id="si_title" autocomplete="off" placeholder="e.g. Muttaburrasaurus $1"></div><div class="field"><label for="si_year">Year</label><input id="si_year" inputmode="numeric" value="${esc(/^\d{4}$/.test(String(c.year||""))?c.year:"")}"></div><div class="field"><label for="si_mint">Mint / privy mark</label><input id="si_mint" list="dl_mint" autocomplete="off"></div><div class="field full"><label for="si_denom">Denomination</label><select id="si_denom"><option value="">—</option>${DENOMS.map(x=>`<option ${x.k===c.denom?"selected":""}>${x.k}</option>`).join("")}</select></div><div class="full"><button type="button" class="btn primary block" data-siok>Add to set</button></div></div>`:""}
   ${items.length?"":inp("setCount","Number of coins in the set",c,{num:"numeric",hint:"only if you're not listing them"})}
   ${inp("setContents","Notes about the set",c,{area:true,ph:"e.g. comes in a presentation box with certificate"})}</div>`; }
+function siRow(d,it,i,n){ const ed=d.siEdit===i, ph=it.photos||[];
+  return `<div class="sitemw ${ed?"on":""}"><div class="sitem">${itemFace(it,44,true)}<span class="tx"><b>${esc(it.title||"Coin "+(i+1))}</b><span>${esc(itemSub(it)||"Added by hand")}</span></span>
+    <span class="sibtns"><button type="button" class="ib" data-siup="${i}" ${i?"":"disabled"} aria-label="Move up">▲</button><button type="button" class="ib" data-sidn="${i}" ${i<n-1?"":"disabled"} aria-label="Move down">▼</button><button type="button" class="ib ${ed?"on":""}" data-siedit="${i}" aria-label="Edit coin ${i+1}">✎</button><button type="button" class="ib" data-sirm="${i}" aria-label="Remove ${esc(it.title||"coin")}">×</button></span></div>
+  ${ed?`<div class="siedit"><div class="field full"><label for="sie_title">Coin name</label><input id="sie_title" data-sif="title" data-sii="${i}" value="${esc(it.title||"")}"></div>
+    <div class="grid2"><div class="field"><label for="sie_denom">Denomination</label><select id="sie_denom" data-sif="denom" data-sii="${i}"><option value="">—</option>${DENOMS.filter(x=>x.k!=="Mixed").map(x=>`<option ${x.k===it.denom?"selected":""}>${x.k}</option>`).join("")}</select></div>
+    <div class="field"><label for="sie_year">Year</label><input id="sie_year" data-sif="year" data-sii="${i}" inputmode="numeric" value="${esc(it.year||"")}"></div>
+    <div class="field full"><label for="sie_mint">Mint / privy mark</label><input id="sie_mint" data-sif="mint" data-sii="${i}" list="dl_mint" value="${esc(it.mint||"")}"></div></div>
+    <div class="flabel">Pictures of this coin</div>
+    ${ph.length?`<div class="thumbs">${ph.map((p,j)=>`<div class="th ${p.mine?"mine":"ref"}"><button type="button" aria-label="Picture ${j+1}">${imgTag(p)}<span class="rb">${p.mine?"MY COIN":"REF · "+esc(shortSrc(p.source))}</span></button><button type="button" class="thx" data-siprm="${i}:${j}" aria-label="Remove picture">×</button></div>`).join("")}</div>`:""}
+    <div class="row"><button type="button" class="btn sm" data-siph="${i}:mine">＋ My photo</button><button type="button" class="btn sm" data-siph="${i}:mint">＋ Mint stock image</button></div>
+    <p class="m0 muted small">Pictures added here are kept on your phone, so they appear in reports. They're saved as the reverse (design side).</p>
+    <button type="button" class="btn sm primary" data-siedit="${i}">Done</button></div>`:""}</div>`; }
+async function addSetItemPhotos(files){ const d=topV(); const pk=S._siPick; if(!d||d.kind!=="edit"||!pk) return; readForm(); const it=(d.draft.setItems||[])[pk.i]; if(!it) return; let n=0;
+  for(const f of files){ try{ const blob=await resizeImage(f,1600); const id=uid("f"); await dbPut("files",{id,blob,type:"image/jpeg",name:id+".jpg"}); d.newFiles.push(id);
+      const p={id,mine:pk.kind==="mine",side:"Reverse"}; if(pk.kind==="mint") p.source="Royal Australian Mint"; it.photos=[p,...(it.photos||[])]; n++; }catch(e){ toast("A picture couldn't be read: "+(e.message||e)); } }
+  drawSet(); if(n) toast(n===1?"Picture added":`${n} pictures added`); }
 function drawSet(){ const el=$("#setFields"); if(el){ el.innerHTML=setSec(topV()); hydrateImages(el); } }
 function setCard(c){ if(!c.isSet) return ""; const items=c.setItems||[];
   if(!items.length) return S.readOnly?"":`<div class="todo" style="background:#E0E7FF"><span><b>Coins in this set:</b> list each coin to get its details and count it in albums.</span><button type="button" class="btn sm" data-edit="${c.id}">Add</button></div>`;
   return `<section class="card"><h3><span class="ico" style="background:#3730A3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><circle cx="12" cy="16" r="4"/></svg></span>Coins in this set<span class="sp"></span><span class="muted small">${items.length}</span></h3>
-  <div class="sitems" style="padding-bottom:12px">${(com=>items.map(it=>`<details class="sdet"><summary>${itemFace(it,44,true)}<span class="tx"><b>${esc(setItemLabel(it,com)||"Coin")}</b><span>${esc(itemSub(it))}</span></span></summary><div class="sdbody">${com&&it.title?`<p class="m0 small" style="padding-top:6px">${esc(it.title)}</p>`:""}${(it.photos||[]).length?`<div class="thumbs">${it.photos.map(p=>`<div class="th ref"><button type="button" aria-label="Reference photo, ${esc(p.side||"")}">${imgTag(p,"data-zoom")}<span class="rb">REF · ${esc(shortSrc(p.source))}</span></button></div>`).join("")}</div>`:""}${kv("Composition",it.composition)+kv("Mass",unit(it.mass,"g"))+kv("Diameter",unit(it.diameter,"mm"))+kv("Edge",it.edge)+kv("Effigy",it.effigy)+kv("Reverse designer",it.reverseDesigner)+kv("Series",it.series)}${it.ns?`<p class="m0 small muted" style="padding:8px 0">Data provided by Numista · <a href="${esc(it.ns.url)}" target="_blank" rel="noopener">N# ${esc(it.ns.id)}</a></p>`:""}</div></details>`).join(""))(setCommon(items))}</div></section>`; }
+  <div class="sitems" style="padding-bottom:12px">${(com=>items.map(it=>`<details class="sdet"><summary>${itemFace(it,44,true)}<span class="tx"><b>${esc(setItemLabel(it,com)||"Coin")}</b><span>${esc(itemSub(it))}</span></span></summary><div class="sdbody">${com&&it.title?`<p class="m0 small" style="padding-top:6px">${esc(it.title)}</p>`:""}${(it.photos||[]).length?`<div class="thumbs">${it.photos.map(p=>`<div class="th ${p.mine?"mine":"ref"}"><button type="button" aria-label="${p.mine?"My photo":"Reference photo"}, ${esc(p.side||"")}">${imgTag(p,"data-zoom")}<span class="rb">${p.mine?"MY COIN":"REF · "+esc(shortSrc(p.source))}</span></button></div>`).join("")}</div>`:""}${kv("Composition",it.composition)+kv("Mass",unit(it.mass,"g"))+kv("Diameter",unit(it.diameter,"mm"))+kv("Edge",it.edge)+kv("Effigy",it.effigy)+kv("Reverse designer",it.reverseDesigner)+kv("Series",it.series)}${it.ns?`<p class="m0 small muted" style="padding:8px 0">Data provided by Numista · <a href="${esc(it.ns.url)}" target="_blank" rel="noopener">N# ${esc(it.ns.id)}</a></p>`:""}</div></details>`).join(""))(setCommon(items))}</div></section>`; }
 function setfindHTML(d){ const c=d.target.draft, n=(c.setItems||[]).length;
   return `<div class="shead"><div class="wrap">${backBtn("Back")}<h2>Add coin to set</h2></div></div>
   <div class="wrap sbody">
@@ -919,7 +939,7 @@ function ckSections(o){ const rows=ckRows(o), wants=o.wants?S.wanted.filter(w=>!
     s.value=s.rows.reduce((a,r)=>a+(r.it&&!r.first||blank(r.c.value)?0:+r.c.value*r.qty),0);
     s.cost=s.rows.reduce((a,r)=>{ const p=costEach(r.c); return a+(r.it&&!r.first||p==null?0:p*r.qty); },0); }
   return secs; }
-const dLabel=k=>({"$10":"$10 coins","$5":"$5 coins","$2":"$2 coins","$1":"$1 coins","50c":"50c coins","20c":"20c coins","10c":"10c coins","5c":"5c coins","2c":"2c coins","1c":"1c coins","Crown":"Crowns","Florin":"Florins","Shilling":"Shillings","Sixpence":"Sixpences","Threepence":"Threepences","Penny":"Pennies","Halfpenny":"Halfpennies","Other":"Other / not set"}[k]||k);
+const dLabel=k=>({"$10":"$10 coins","$5":"$5 coins","$2":"$2 coins","$1":"$1 coins","50c":"50c coins","20c":"20c coins","10c":"10c coins","5c":"5c coins","2c":"2c coins","1c":"1c coins","Mixed":"Mixed-denomination sets","Crown":"Crowns","Florin":"Florins","Shilling":"Shillings","Sixpence":"Sixpences","Threepence":"Threepences","Penny":"Pennies","Halfpenny":"Halfpennies","Other":"Other / not set"}[k]||k);
 function viewChecklist(){ const o=ckOpts(); const secs=ckSections(o);
   return `<section class="view">${backMore}<div class="panel"><h3>Collection checklist</h3><p class="m0">Everything you have, sorted by denomination then year, with the wants you're still hunting for under each one. Save the PDF to your phone and it works offline at a coin fair.</p>
   <div class="flabel" style="margin-top:4px">Denominations</div>
@@ -1185,7 +1205,11 @@ document.addEventListener("click",async e=>{
   if("siok" in d){ readForm(); const t=topV(); const title=($("#si_title").value||"").trim(); if(!title){ toast("Give the coin a name first"); return; }
     const it={id:uid("si"),...pickKeys({title,year:($("#si_year").value||"").trim(),mint:($("#si_mint").value||"").trim(),denom:$("#si_denom").value},["title","year","mint","denom"]),photos:[]};
     t.draft.setItems=[...(t.draft.setItems||[]),it]; t.siManual=false; drawSet(); toast(`Added — ${t.draft.setItems.length} coin${t.draft.setItems.length===1?"":"s"} in the set`); return; }
-  if(d.sirm!=null){ readForm(); const t=topV(); const [it]=t.draft.setItems.splice(+d.sirm,1); for(const p of ((it&&it.photos)||[])) if(!p.url&&t.newFiles.includes(p.id)){ t.newFiles=t.newFiles.filter(x=>x!==p.id); await dbDel("files",p.id); } drawSet(); return; }
+  if(d.siup!=null||d.sidn!=null){ readForm(); const t=topV(), a=t.draft.setItems, i=+(d.siup??d.sidn), j=d.siup!=null?i-1:i+1; if(j<0||j>=a.length) return; [a[i],a[j]]=[a[j],a[i]]; if(t.siEdit===i) t.siEdit=j; else if(t.siEdit===j) t.siEdit=i; drawSet(); return; }
+  if(d.siedit!=null){ readForm(); const t=topV(), i=+d.siedit; t.siEdit=t.siEdit===i?null:i; drawSet(); if(t.siEdit!=null){ const r=document.querySelectorAll(".sitemw")[i]; if(r) r.scrollIntoView({block:"nearest"}); } return; }
+  if(d.siph){ readForm(); const [i,kind]=d.siph.split(":"); S._siPick={i:+i,kind}; $("#siIn").click(); return; }
+  if(d.siprm){ readForm(); const t=topV(); const [i,j]=d.siprm.split(":").map(Number); const it=t.draft.setItems[i]; const [p]=it.photos.splice(j,1); if(p&&!p.url&&t.newFiles.includes(p.id)){ t.newFiles=t.newFiles.filter(x=>x!==p.id); await dbDel("files",p.id); } drawSet(); return; }
+  if(d.sirm!=null){ readForm(); const t=topV(); t.siEdit=null; const [it]=t.draft.setItems.splice(+d.sirm,1); for(const p of ((it&&it.photos)||[])) if(!p.url&&t.newFiles.includes(p.id)){ t.newFiles=t.newFiles.filter(x=>x!==p.id); await dbDel("files",p.id); } drawSet(); return; }
   /* receipts */
   if("rcnew" in d){ readForm(); S._rcMode="edit"; $("#rcIn").click(); return; }
   if("rcnewstd" in d){ S._rcMode="std"; $("#rcIn").click(); return; }
@@ -1281,6 +1305,7 @@ document.addEventListener("change",async e=>{
   if(el.dataset.pside!=null){ readForm(); topV().draft.photos[+el.dataset.pside].side=el.value; return; }
   if(el.dataset.psrc!=null){ readForm(); topV().draft.photos[+el.dataset.psrc].source=el.value; drawPhotos(); return; }
   if(el.id==="nsAus"){ await dbPut("settings",{...nsSet(),ausOnly:el.checked}); await reload(); return; }
+  if(el.id==="siIn"&&el.files.length){ const fs=[...el.files]; el.value=""; await addSetItemPhotos(fs); return; }
   if((el.id==="camIn"||el.id==="phIn")&&el.files.length){ const fs=[...el.files]; el.value=""; await addPhotoFiles(fs); return; }
   if(el.id==="restoreIn"&&el.files.length){ await readRestore(el.files[0]); el.value=""; return; }
 });
