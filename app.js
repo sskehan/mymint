@@ -374,10 +374,11 @@ function nsInfo(t,issues){ return {id:t.id,url:t.url||`https://en.numista.com/${
   issues:(issues||[]).map(i=>({year:i.year!=null?i.year:i.gregorian_year,mint:i.mint_letter||"",mintage:i.mintage||null,id:i.id})).filter(i=>i.year!=null),fetchedAt:new Date().toISOString()}; }
 /* Numista's picture server doesn't let apps copy its images directly, so if that fails the picture is fetched
    through wsrv.nl, a free public image relay, and a copy is kept on the phone (and in Dropbox) from then on. */
-const IMG_FAIL=new Set();
-async function fetchImgBlob(url){ if(!url||IMG_FAIL.has(url)) return null;
+/* after 3 web pictures in a row fail, stop trying for this session — saves waiting when Numista is blocking */
+const IMG_FAIL=new Set(); let IMG_OK=0;
+async function fetchImgBlob(url){ if(!url||IMG_FAIL.has(url)||(IMG_FAIL.size>=3&&!IMG_OK)) return null;
   for(const u of [url,`https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=85`]){
-    try{ const r=await fetch(u,{mode:"cors",referrerPolicy:"no-referrer"}); if(!r.ok) continue; const b=await r.blob(); if(/^image\//.test(b.type||"")) return b; }catch{} }
+    try{ const ac=new AbortController(), tm=setTimeout(()=>ac.abort(),6000); const r=await fetch(u,{mode:"cors",referrerPolicy:"no-referrer",signal:ac.signal}).finally(()=>clearTimeout(tm)); if(!r.ok) continue; const b=await r.blob(); if(/^image\//.test(b.type||"")){ IMG_OK++; return b; } }catch{} }
   IMG_FAIL.add(url); return null; }
 async function nsImage(url){ if(!url) return null;
   try{ const b=await fetchImgBlob(url); if(!b) throw 0; const small=await resizeImage(b,1200); const id=uid("f"); await dbPut("files",{id,blob:small,type:"image/jpeg",name:id+".jpg"}); return {id}; }
@@ -779,13 +780,13 @@ function packField(d){ const c=d.draft; const opts=[...packOptions(d.packOther?"
 
 /* ================= statistics by denomination ================= */
 function denomPanel(owned){
-  const rows=new Map(); const row=k=>{ if(!rows.has(k)) rows.set(k,{k,coins:0,records:0,value:0}); return rows.get(k); };
-  for(const c of owned){ const dk=c.denom||"Not recorded"; const r=row(dk); r.records++; if(!blank(c.value)) r.value+=+c.value*qtyOf(c);
+  const rows=new Map(); const row=k=>{ if(!rows.has(k)) rows.set(k,{k,coins:0,records:0,value:0,inner:0}); return rows.get(k); };
+  for(const c of owned){ const dk=c.denom||"Not recorded"; const r=row(dk); r.records++; if(!blank(c.value)) r.value+=+c.value*qtyOf(c); if(dk==="Mixed") r.inner+=coinsIn(c);
     const items=c.isSet?(c.setItems||[]):[];
     if(items.length){ for(const it of items) row(it.denom||dk).coins+=qtyOf(c); } else r.coins+=coinsIn(c); }
   const order=k=>{ const i=DENOMS.findIndex(d=>d.k===k); return i<0?999:i; };
   const list=[...rows.values()].sort((a,b)=>order(a.k)-order(b.k)); const max=Math.max(1,...list.map(r=>r.coins));
-  return `<div class="panel"><h3>By denomination</h3><div class="dlist">${list.map(r=>{ const d=DENOMS.find(x=>x.k===r.k); const g=GROUPS[d?d.grp:"other"]; return `<div class="drow"><span class="gico" style="background:${g.solid}">${esc(d?d.face:"?")}</span><div class="dmain"><div class="dtop"><b>${esc(r.k)}</b><span class="num">${r.coins} coin${r.coins===1?"":"s"}</span></div><div class="track"><div class="fill" style="width:${r.coins/max*100}%;background:${g.solid}"></div></div><span class="muted small">${r.records?`${r.records} record${r.records===1?"":"s"}`:"in sets"}${r.value?` · value ${aud(Math.round(r.value))}`:""}</span></div></div>`; }).join("")}</div><p class="m0 muted small">Coins counts every coin — duplicates and each coin in a set. Value is your current value for those records.</p></div>`;
+  return `<div class="panel"><h3>By denomination</h3><div class="dlist">${list.map(r=>{ const d=DENOMS.find(x=>x.k===r.k); const g=GROUPS[d?d.grp:"other"]; return `<div class="drow"><span class="gico" style="background:${g.solid}">${esc(d?d.face:"?")}</span><div class="dmain"><div class="dtop">${(mx=>`<b>${esc(mx?"Mixed sets":r.k)}</b><span class="num">${mx?r.inner:r.coins} coin${(mx?r.inner:r.coins)===1?"":"s"}</span></div><div class="track"><div class="fill" style="width:${Math.min(100,(mx?r.inner:r.coins)/max*100)}%;background:${g.solid}"></div></div><span class="muted small">${mx?`${r.records} set${r.records===1?"":"s"}${r.value?` · value ${aud(Math.round(r.value))}`:""} · its coins are also counted under their own denominations above`:`${r.records?`${r.records} record${r.records===1?"":"s"}`:"in sets"}${r.value?` · value ${aud(Math.round(r.value))}`:""}`}</span>`)(r.k==="Mixed")}</div></div>`; }).join("")}</div><p class="m0 muted small">Coins counts every coin — duplicates and each coin in a set, under that coin’s own denomination. A mixed set’s value is shown on its Mixed sets line.</p></div>`;
 }
 
 /* ================= receipts & documents ================= */
@@ -875,7 +876,6 @@ function loadJsPDF(){ if(window.jspdf) return Promise.resolve(); return new Prom
 const pdfTxt=t=>String(t??"").replace(/[–—]/g,"-").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/×/g,"x").replace(/…/g,"...").replace(/[^\x20-\x7E\xA0-\xFF\n]/g,"");
 async function makeReport(){
   const o=S.rep, out=$("#repOut"), say=m=>{ if(out) out.innerHTML=`<span class="muted small">${esc(m)}</span>`; };
-  if(o.photos&&o.ref) await keepRefCopies(S.coins.filter(c=>o.sold||isOwned(c)),say);
   say("Making the PDF…"); await loadJsPDF();
   const list=sorted(S.coins.filter(c=>o.sold||isOwned(c)).slice());
   const totP=list.reduce((a,c)=>{ const p=costEach(c); return a+(p==null?0:p*qtyOf(c)); },0), totPost=list.reduce((a,c)=>a+(priceAUD(c)==null?0:postageTotal(c)),0), totV=list.reduce((a,c)=>a+(blank(c.value)?0:+c.value*qtyOf(c)),0), nCoins=list.reduce((a,c)=>a+coinsIn(c),0);
@@ -975,7 +975,7 @@ const ckPhoto=(r,first)=>ckCands(r,first)[0]||null;
 async function makeChecklist(){
   const o=ckOpts(), out=$("#repOut"), say=m=>{ if(out) out.innerHTML=`<span class="muted small">${esc(m)}</span>`; };
   const secs=ckSections(o).filter(s=>!o.off.includes(s.k)&&(s.rows.length||s.wants.length)); if(!secs.length){ say("Tick at least one denomination."); return; }
-  let kept={done:0,failed:0}; if(o.photos){ kept=await keepRefCopies(S.coins.filter(c=>o.sold||isOwned(c)),say); }
+  const kept={done:0,failed:0};
   const secs2=ckSections(o).filter(s=>!o.off.includes(s.k)&&(s.rows.length||s.wants.length)); secs.splice(0,secs.length,...secs2);
   say("Making the PDF…"); await loadJsPDF(); let pics=0, noPic=0, webFail=0;
   const { jsPDF }=window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210, M=14, BOT=283, IW=W-2*M;
