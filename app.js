@@ -943,7 +943,9 @@ function ckSections(o){ const rows=ckRows(o), wants=o.wants?S.wanted.filter(w=>!
   for(const r of rows) get(r.denom).rows.push(r); for(const w of wants) get(dKey(w.denom)).wants.push(w);
   const yr=x=>{ const n=String(x.year||"").match(/\d{4}/); return n?+n[0]:9999; };
   const secs=[...m.values()].sort((a,b)=>DENOMS.findIndex(d=>d.k===a.k)-DENOMS.findIndex(d=>d.k===b.k));
-  for(const s of secs){ s.rows.sort((a,b)=>yr(a)-yr(b)||a.name.localeCompare(b.name)); s.wants.sort((a,b)=>yr(a)-yr(b)); const seen=new Set(); for(const r of s.rows) if(r.it){ r.first=!seen.has(r.c.id); seen.add(r.c.id); }
+  /* a set's price and value go on its first line in the whole list (not once per denomination), so totals count it once */
+  const seen=new Set(); for(const s of secs){ s.rows.sort((a,b)=>yr(a)-yr(b)||a.name.localeCompare(b.name)); s.wants.sort((a,b)=>yr(a)-yr(b)); for(const r of s.rows) if(r.it){ r.first=!seen.has(r.c.id); seen.add(r.c.id); } }
+  for(const s of secs){
     s.coins=s.rows.reduce((a,r)=>a+r.qty*(r.it||!r.c.isSet?1:setSize(r.c)),0);
     s.value=s.rows.reduce((a,r)=>a+(r.it&&!r.first||blank(r.c.value)?0:+r.c.value*r.qty),0);
     s.cost=s.rows.reduce((a,r)=>{ const p=costEach(r.c); return a+(r.it&&!r.first||p==null?0:p*r.qty); },0); }
@@ -1013,7 +1015,7 @@ async function makeChecklist(){
         doc.text(tl,x,y+4); doc.setFont("helvetica","normal"); if(sl.length){ doc.setFontSize(7.6); doc.setTextColor(95,95,95); doc.text(sl,x,y+4+tl.length*3.7); doc.setTextColor(20,20,20); } x+=cols.find(c=>c[0]==="Coin")[1];
         doc.setFontSize(7.6); doc.text(doc.splitTextToSize(pdfTxt(r.mint||""),13),x,y+4); doc.setFontSize(8.3); x+=14; doc.text(pdfTxt(r.grade),x,y+4); x+=17; doc.setFontSize(7.6); doc.text(pl,x,y+4); x+=21; doc.setFontSize(8.3);
         doc.text(r.qty>1?"x"+r.qty:"1",x,y+4); x+=9;
-        if(o.money){ if(r.it&&!r.first){ doc.setTextColor(150,150,150); doc.text("in set",x,y+4); doc.setTextColor(20,20,20); } else { const p=costEach(r.c); doc.text(pdfTxt(p!=null?aud(p*(r.it?1:1)):""),x,y+4); x+=14.5; doc.text(pdfTxt(blank(r.c.value)?"":aud(r.c.value)),x,y+4); if(r.it){ doc.setFontSize(6.5); doc.setTextColor(150,150,150); doc.text("whole set",x-14.5,y+7.2); doc.setTextColor(20,20,20); } } }
+        if(o.money){ if(r.it&&!r.first){ doc.setTextColor(150,150,150); if(costEach(r.c)!=null||!blank(r.c.value)) doc.text("in set",x,y+4); doc.setTextColor(20,20,20); } else { const p=costEach(r.c); doc.text(pdfTxt(p!=null?aud(p):""),x,y+4); x+=14.5; doc.text(pdfTxt(blank(r.c.value)?"":aud(r.c.value)),x,y+4); if(r.it&&(p!=null||!blank(r.c.value))){ doc.setFontSize(6.5); doc.setTextColor(150,150,150); doc.text("whole set",x-14.5,y+7.2); doc.setTextColor(20,20,20); } } }
         y+=h; doc.setDrawColor(232,234,240); doc.line(M,y,W-M,y); y+=0.8; }
     }
     if(s.wants.length){ if(y+16>BOT){ doc.addPage(); y=M; band(s,true); }
