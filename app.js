@@ -370,9 +370,24 @@ function fromNumista(t,issue){
 }
 function nsInfo(t,issues){ return {id:t.id,url:t.url||`https://en.numista.com/${t.id}`,title:t.title||"",refs:(t.references||[]).map(r=>`${(r.catalogue&&r.catalogue.code)||""} ${r.number||""}`.trim()).filter(Boolean).join(", "),
   issues:(issues||[]).map(i=>({year:i.year!=null?i.year:i.gregorian_year,mint:i.mint_letter||"",mintage:i.mintage||null,id:i.id})).filter(i=>i.year!=null),fetchedAt:new Date().toISOString()}; }
+/* Numista's picture server doesn't let apps copy its images directly, so if that fails the picture is fetched
+   through wsrv.nl, a free public image relay, and a copy is kept on the phone (and in Dropbox) from then on. */
+async function fetchImgBlob(url){ if(!url) return null;
+  for(const u of [url,`https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=85`]){
+    try{ const r=await fetch(u,{mode:"cors",referrerPolicy:"no-referrer"}); if(!r.ok) continue; const b=await r.blob(); if(/^image\//.test(b.type||"")) return b; }catch{} }
+  return null; }
 async function nsImage(url){ if(!url) return null;
-  try{ const r=await fetch(url,{mode:"cors"}); if(!r.ok) throw 0; const b=await r.blob(); if(!/^image\//.test(b.type)) throw 0; const small=await resizeImage(b,1200); const id=uid("f"); await dbPut("files",{id,blob:small,type:"image/jpeg",name:id+".jpg"}); return {id}; }
+  try{ const b=await fetchImgBlob(url); if(!b) throw 0; const small=await resizeImage(b,1200); const id=uid("f"); await dbPut("files",{id,blob:small,type:"image/jpeg",name:id+".jpg"}); return {id}; }
   catch{ return {id:uid("r"),url}; } }
+/* turn linked (web) reference pictures into copies kept on the phone, so reports can use them and they work offline */
+async function keepRefCopies(coins,say){ let done=0, failed=0; const todo=coins.filter(c=>[...(c.photos||[]),...(c.setItems||[]).flatMap(it=>it.photos||[])].some(p=>p&&p.url));
+  for(const c0 of todo){ const c=clone(c0); let changed=false;
+    for(const ph of [c.photos||[],...(c.setItems||[]).map(it=>it.photos||[])]) for(let i=0;i<ph.length;i++){ const p=ph[i]; if(!p||!p.url) continue;
+      if(say) say(`Saving Numista pictures to your phone… ${done+1}`);
+      const b=await fetchImgBlob(p.url); if(!b){ failed++; continue; }
+      try{ const small=await resizeImage(b,1200); const id=uid("f"); await dbPut("files",{id,blob:small,type:"image/jpeg",name:id+".jpg"}); const np={...p,id,link:p.link||p.url}; delete np.url; if(c.coverId===p.id) c.coverId=id; ph[i]=np; changed=true; done++; }catch{ failed++; } }
+    if(changed){ c.updatedAt=new Date().toISOString(); await dbPut("coins",c); } }
+  if(done) await reload(); return {done,failed}; }
 function applyNs(draft,o,overwriteAll){ draft.nsFilled=draft.nsFilled||{}; for(const [k,v] of Object.entries(o)){ if(overwriteAll||blank(draft[k])||draft.nsFilled[k]===draft[k]){ draft[k]=v; draft.nsFilled[k]=v; } } }
 async function nsRefresh(id){
   const c=clone(S.coins.find(x=>x.id===id)); if(!c||!c.ns) return;
@@ -822,7 +837,7 @@ const RANK=["Obverse","Reverse","Card / packaging","Edge","Slab label","Other"];
 function ownForReport(c){ const own=(c.photos||[]).filter(p=>p.mine&&!p.url&&p.side!=="Certificate"); const rk=p=>{ const i=RANK.indexOf(p.side||"Other"); return i<0?RANK.length:i; }; const cv=own.find(p=>p.id===c.coverId&&p.side!=="Other"); return [...(cv?[cv]:[]),...own.filter(p=>p!==cv).sort((a,b)=>rk(a)-rk(b))]; }
 function refForReport(c){ const rk=p=>p.side==="Obverse"?0:p.side==="Reverse"?1:2; let r=(c.photos||[]).filter(p=>!p.mine).sort((a,b)=>rk(a)-rk(b)); if(!r.length) for(const it of (c.setItems||[])) r=r.concat((it.photos||[]).slice().sort((a,b)=>rk(a)-rk(b))); return r; }
 function pickN(list,n){ if(n<2||list.length<2) return list.slice(0,1); const a=list[0]; return [a,list.find(p=>p!==a&&p.side!==a.side)||list[1]]; }
-async function imgData(p){ if(!p) return null; try{ let blob; if(p.url){ const r=await fetch(p.url,{mode:"cors"}); if(!r.ok) return null; blob=await r.blob(); } else { const f=await dbGet("files",p.id); if(!f) return null; blob=f.blob; } if(!/^image\//.test(blob.type||"image/")) return null; const bmp=await createImageBitmap(blob); const S2=240, cv=document.createElement("canvas"); cv.width=S2; cv.height=S2; const x=cv.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,S2,S2); const s=Math.max(S2/bmp.width,S2/bmp.height); x.drawImage(bmp,(S2-bmp.width*s)/2,(S2-bmp.height*s)/2,bmp.width*s,bmp.height*s); return cv.toDataURL("image/jpeg",0.8); }catch{ return null; } }
+async function imgData(p){ if(!p) return null; try{ let blob; if(p.url){ blob=await fetchImgBlob(p.url); if(!blob) return null; } else { const f=await dbGet("files",p.id); if(!f) return null; blob=f.blob; } if(!/^image\//.test(blob.type||"image/")) return null; const bmp=await createImageBitmap(blob); const S2=240, cv=document.createElement("canvas"); cv.width=S2; cv.height=S2; const x=cv.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,S2,S2); const s=Math.max(S2/bmp.width,S2/bmp.height); x.drawImage(bmp,(S2-bmp.width*s)/2,(S2-bmp.height*s)/2,bmp.width*s,bmp.height*s); return cv.toDataURL("image/jpeg",0.8); }catch{ return null; } }
 function viewReport(){ const o=S.rep||(S.rep={photos:true,two:false,ref:true,sold:false,by:""}); if(o.two===undefined) o.two=false; if(o.ref===undefined) o.ref=true;
   const list=S.coins.filter(c=>o.sold||isOwned(c)); const none=list.filter(c=>!ownForReport(c).length); const otherOnly=list.filter(c=>{ const p=ownForReport(c); return p.length&&p.every(x=>x.side==="Other"); });
   return `<section class="view">${backMore}<div class="panel"><h3>Insurance report</h3><p class="m0">A PDF listing of your coins with photos, grade, quantity, price paid, current value and where each is kept, with totals. Save it, open it, or share it straight to email or Drive.</p>
@@ -838,6 +853,7 @@ function loadJsPDF(){ if(window.jspdf) return Promise.resolve(); return new Prom
 const pdfTxt=t=>String(t??"").replace(/[–—]/g,"-").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/×/g,"x").replace(/…/g,"...").replace(/[^\x20-\x7E\xA0-\xFF\n]/g,"");
 async function makeReport(){
   const o=S.rep, out=$("#repOut"), say=m=>{ if(out) out.innerHTML=`<span class="muted small">${esc(m)}</span>`; };
+  if(o.photos&&o.ref) await keepRefCopies(S.coins.filter(c=>o.sold||isOwned(c)),say);
   say("Making the PDF…"); await loadJsPDF();
   const list=sorted(S.coins.filter(c=>o.sold||isOwned(c)).slice());
   const totP=list.reduce((a,c)=>{ const p=costEach(c); return a+(p==null?0:p*qtyOf(c)); },0), totPost=list.reduce((a,c)=>a+(priceAUD(c)==null?0:postageTotal(c)),0), totV=list.reduce((a,c)=>a+(blank(c.value)?0:+c.value*qtyOf(c)),0), nCoins=list.reduce((a,c)=>a+coinsIn(c),0);
@@ -920,7 +936,9 @@ function ckPhoto(r){ const rev=ph=>{ ph=ph||[]; return ph.find(p=>!p.mine&&p.sid
 async function makeChecklist(){
   const o=ckOpts(), out=$("#repOut"), say=m=>{ if(out) out.innerHTML=`<span class="muted small">${esc(m)}</span>`; };
   const secs=ckSections(o).filter(s=>!o.off.includes(s.k)&&(s.rows.length||s.wants.length)); if(!secs.length){ say("Tick at least one denomination."); return; }
-  say("Making the PDF…"); await loadJsPDF();
+  let kept={done:0,failed:0}; if(o.photos){ kept=await keepRefCopies(S.coins.filter(c=>o.sold||isOwned(c)),say); }
+  const secs2=ckSections(o).filter(s=>!o.off.includes(s.k)&&(s.rows.length||s.wants.length)); secs.splice(0,secs.length,...secs2);
+  say("Making the PDF…"); await loadJsPDF(); let pics=0, noPic=0;
   const { jsPDF }=window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210, M=14, BOT=283, IW=W-2*M;
   const PH=o.photos?11:0, MON=o.money?29:0;
   const cols=[...(o.photos?[["",PH]]:[]),["Year",13],["Coin",IW-PH-13-14-17-21-9-MON],["Mint",14],["Grade",17],["Pack",21],["Qty",9],...(o.money?[["Paid",14.5],["Value",14.5]]:[])];
@@ -953,7 +971,7 @@ async function makeChecklist(){
         const pl=doc.splitTextToSize(pdfTxt(r.pack),20), ml=doc.splitTextToSize(pdfTxt(r.mint||""),13); const h=Math.max(o.photos?12:7,tl.length*3.7+sl.length*3.2+3,pl.length*3.2+3,ml.length*3.2+3,String(r.year||"").length>6?9:0);
         if(y+h>BOT){ doc.addPage(); y=M; band(s,true); head(); }
         let x=M+1.5;
-        if(o.photos){ const ph=ckPhoto(r); const dt=ph?await imgData(ph):null; if(dt) doc.addImage(dt,"JPEG",x-0.5,y+0.5,10,10); x+=PH; }
+        if(o.photos){ const ph=ckPhoto(r); const dt=ph?await imgData(ph):null; if(dt){ doc.addImage(dt,"JPEG",x-0.5,y+0.5,10,10); pics++; } else noPic++; x+=PH; }
         doc.setFontSize(8.8); doc.setFont("helvetica","bold"); { let yt=pdfTxt(String(r.year||"-")); if(doc.getTextWidth(yt)>12) yt=yt.replace(/\s*-\s*/,"-\n"); doc.text(yt.split("\n"),x,y+4); } x+=13;
         doc.text(tl,x,y+4); doc.setFont("helvetica","normal"); if(sl.length){ doc.setFontSize(7.6); doc.setTextColor(95,95,95); doc.text(sl,x,y+4+tl.length*3.7); doc.setTextColor(20,20,20); } x+=cols.find(c=>c[0]==="Coin")[1];
         doc.setFontSize(7.6); doc.text(doc.splitTextToSize(pdfTxt(r.mint||""),13),x,y+4); doc.setFontSize(8.3); x+=14; doc.text(pdfTxt(r.grade),x,y+4); x+=17; doc.setFontSize(7.6); doc.text(pl,x,y+4); x+=21; doc.setFontSize(8.3);
@@ -974,7 +992,7 @@ async function makeChecklist(){
   const blob=doc.output("blob"), name=`mymint-checklist-${todayISO()}.pdf`, url=URL.createObjectURL(blob);
   const canShare=!!(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:"application/pdf"})]}));
   S._repFile=new File([blob],name,{type:"application/pdf"});
-  if(out) out.innerHTML=`<a class="btn primary" href="${url}" download="${esc(name)}">Save PDF to phone</a><a class="btn" href="${url}" target="_blank" rel="noopener">Open PDF</a>${canShare?`<button type="button" class="btn" data-sharerep>Share…</button>`:""}<span class="muted small">${pages} page${pages===1?"":"s"} · ${(blob.size/1024).toFixed(0)} KB</span>`;
+  if(out) out.innerHTML=`<a class="btn primary" href="${url}" download="${esc(name)}">Save PDF to phone</a><a class="btn" href="${url}" target="_blank" rel="noopener">Open PDF</a>${canShare?`<button type="button" class="btn" data-sharerep>Share…</button>`:""}<span class="muted small">${pages} page${pages===1?"":"s"} · ${(blob.size/1024).toFixed(0)} KB${o.photos?` · ${pics} picture${pics===1?"":"s"}${noPic?`, ${noPic} line${noPic===1?"":"s"} without one${kept.failed?" (some Numista pictures couldn't be downloaded — check you're online and try again)":" (no Numista reverse saved for those — open the coin › Numista to add it)"}`:""}`:""}</span>`;
 }
 
 /* ================= cost: price + share of receipt postage ================= */
