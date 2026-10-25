@@ -935,11 +935,12 @@ function viewChecklist(){ const o=ckOpts(); const secs=ckSections(o);
 /* checklist picture: from the source chosen first (my photo, Mint stock image or Numista), then the others; design side (reverse) preferred */
 const PIC_SRC={mine:"My own photo",mint:"Mint stock image (RAM / Perth)",numista:"Numista image"};
 const picKind=p=>p.mine?"mine":p.source==="Numista"?"numista":/mint|ram\b|perth/i.test(p.source||"")?"mint":"ref";
-function ckPhoto(r,first){ const order=[first||"mine",...["mine","mint","numista","ref"].filter(k=>k!==(first||"mine"))];
-  const pool=r.it?(r.it.photos||[]):[...(r.c.photos||[]),...(r.c.setItems||[]).flatMap(it=>it.photos||[])];
-  const ok=pool.filter(p=>p&&!["Certificate","Slab label","Edge"].includes(p.side));
-  for(const k of order){ const ps=ok.filter(p=>picKind(p)===k); const best=ps.find(p=>p.side==="Reverse")||ps.find(p=>p.side!=="Obverse"&&p.side!=="Other")||ps.find(p=>p.side!=="Other")||ps[0]; if(best) return best; }
-  return null; }
+function bestOf(pool,first){ const order=[first||"mine",...["mine","mint","numista","ref"].filter(k=>k!==(first||"mine"))]; const ok=(pool||[]).filter(p=>p&&!["Certificate","Slab label","Edge"].includes(p.side)); const out=[];
+  for(const k of order){ const ps=ok.filter(p=>picKind(p)===k); const best=ps.find(p=>p.side==="Reverse")||ps.find(p=>p.side!=="Obverse"&&p.side!=="Other")||ps.find(p=>p.side!=="Other")||ps[0]; if(best) out.push(best); } return out; }
+/* all candidate pictures in order: a set coin's own pictures first, then the set's photos (yours or Mint stock images) */
+function ckCands(r,first){ const pools=r.it?[r.it.photos,r.c.photos]:[[...(r.c.photos||[]),...(r.c.setItems||[]).flatMap(it=>it.photos||[])]]; const out=[];
+  for(const pool of pools) for(const p of bestOf(pool,first)) if(!out.includes(p)) out.push(p); return out; }
+const ckPhoto=(r,first)=>ckCands(r,first)[0]||null;
 async function makeChecklist(){
   const o=ckOpts(), out=$("#repOut"), say=m=>{ if(out) out.innerHTML=`<span class="muted small">${esc(m)}</span>`; };
   const secs=ckSections(o).filter(s=>!o.off.includes(s.k)&&(s.rows.length||s.wants.length)); if(!secs.length){ say("Tick at least one denomination."); return; }
@@ -978,7 +979,7 @@ async function makeChecklist(){
         const pl=doc.splitTextToSize(pdfTxt(r.pack),20), ml=doc.splitTextToSize(pdfTxt(r.mint||""),13); const h=Math.max(o.photos?12:7,tl.length*3.7+sl.length*3.2+3,pl.length*3.2+3,ml.length*3.2+3,String(r.year||"").length>6?9:0);
         if(y+h>BOT){ doc.addPage(); y=M; band(s,true); head(); }
         let x=M+1.5;
-        if(o.photos){ let dt=null, rowWeb=false; { const tried=new Set(); for(const first of [o.pic,"mine","mint","numista","ref"]){ const ph=ckPhoto(r,first); if(!ph||tried.has(ph)) continue; tried.add(ph); dt=await imgData(ph); if(dt) break; if(ph.url||picKind(ph)==="numista") rowWeb=true; } } if(dt){ doc.addImage(dt,"JPEG",x-0.5,y+0.5,10,10); pics++; } else if(rowWeb) webFail++; else noPic++; x+=PH; }
+        if(o.photos){ let dt=null, rowWeb=false; for(const ph of ckCands(r,o.pic)){ dt=await imgData(ph); if(dt) break; if(ph.url||picKind(ph)==="numista") rowWeb=true; } if(dt){ doc.addImage(dt,"JPEG",x-0.5,y+0.5,10,10); pics++; } else if(rowWeb) webFail++; else noPic++; x+=PH; }
         doc.setFontSize(8.8); doc.setFont("helvetica","bold"); { let yt=pdfTxt(String(r.year||"-")); if(doc.getTextWidth(yt)>12) yt=yt.replace(/\s*-\s*/,"-\n"); doc.text(yt.split("\n"),x,y+4); } x+=13;
         doc.text(tl,x,y+4); doc.setFont("helvetica","normal"); if(sl.length){ doc.setFontSize(7.6); doc.setTextColor(95,95,95); doc.text(sl,x,y+4+tl.length*3.7); doc.setTextColor(20,20,20); } x+=cols.find(c=>c[0]==="Coin")[1];
         doc.setFontSize(7.6); doc.text(doc.splitTextToSize(pdfTxt(r.mint||""),13),x,y+4); doc.setFontSize(8.3); x+=14; doc.text(pdfTxt(r.grade),x,y+4); x+=17; doc.setFontSize(7.6); doc.text(pl,x,y+4); x+=21; doc.setFontSize(8.3);
